@@ -88,7 +88,15 @@ export function QuoteForm({
     },
   });
 
-  const { register, handleSubmit, setValue, watch, formState: { errors } } = form;
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    watch,
+    setError,
+    clearErrors,
+    formState: { errors },
+  } = form;
 
   function onSubmit(data: QuoteFormValues) {
     const transformed = data as unknown as QuoteFormInput;
@@ -98,10 +106,20 @@ export function QuoteForm({
         : await createQuote(transformed);
 
       if (!result.success) {
+        if (result.fieldErrors) {
+          Object.entries(result.fieldErrors).forEach(([field, messages]) => {
+            if (!messages?.[0]) return;
+            setError(field as keyof QuoteFormValues, {
+              type: "server",
+              message: messages[0],
+            });
+          });
+        }
         toast.error(result.error);
         return;
       }
 
+      clearErrors();
       toast.success(isEditing ? "Quote updated." : "Quote created.");
       onSuccess?.();
     });
@@ -137,6 +155,9 @@ export function QuoteForm({
             placeholder="0.00"
             {...register("amount")}
           />
+          {errors.amount && (
+            <p className="text-xs text-destructive">{errors.amount.message}</p>
+          )}
         </div>
 
         <div className="space-y-1.5">
@@ -164,11 +185,17 @@ export function QuoteForm({
         <div className="space-y-1.5">
           <Label htmlFor="quote-sent">Sent date</Label>
           <Input id="quote-sent" type="date" {...register("sentAt")} />
+          {errors.sentAt && (
+            <p className="text-xs text-destructive">{errors.sentAt.message}</p>
+          )}
         </div>
 
         <div className="space-y-1.5">
           <Label htmlFor="quote-followup">Follow-up date</Label>
           <Input id="quote-followup" type="date" {...register("followUpAt")} />
+          {errors.followUpAt && (
+            <p className="text-xs text-destructive">{errors.followUpAt.message}</p>
+          )}
         </div>
       </div>
 

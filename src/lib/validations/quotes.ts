@@ -10,6 +10,15 @@
 import { z } from "zod";
 import { QuoteStatus } from "@prisma/client";
 
+function coerceOptionalDate(value: string | Date | undefined) {
+  if (!value) return undefined;
+  if (value instanceof Date) {
+    return isNaN(value.getTime()) ? undefined : value;
+  }
+  const d = new Date(value);
+  return isNaN(d.getTime()) ? undefined : d;
+}
+
 // ---------------------------------------------------------------------------
 // Quote form schema (create / edit)
 // ---------------------------------------------------------------------------
@@ -24,12 +33,12 @@ export const quoteFormSchema = z.object({
   // Amount stored as a decimal. The form sends a string from <input type="number">.
   // We coerce it to a number; undefined/empty means no amount set.
   amount: z
-    .string()
+    .union([z.string(), z.number()])
     .optional()
     .or(z.literal(""))
     .transform((v) => {
       if (!v) return undefined;
-      const n = parseFloat(v);
+      const n = typeof v === "number" ? v : parseFloat(v);
       return isNaN(n) ? undefined : n;
     }),
 
@@ -43,24 +52,16 @@ export const quoteFormSchema = z.object({
   status: z.nativeEnum(QuoteStatus).default("DRAFT"),
 
   sentAt: z
-    .string()
+    .union([z.string(), z.date()])
     .optional()
     .or(z.literal(""))
-    .transform((v) => {
-      if (!v) return undefined;
-      const d = new Date(v);
-      return isNaN(d.getTime()) ? undefined : d;
-    }),
+    .transform((v) => coerceOptionalDate(v)),
 
   followUpAt: z
-    .string()
+    .union([z.string(), z.date()])
     .optional()
     .or(z.literal(""))
-    .transform((v) => {
-      if (!v) return undefined;
-      const d = new Date(v);
-      return isNaN(d.getTime()) ? undefined : d;
-    }),
+    .transform((v) => coerceOptionalDate(v)),
 
   // Required — every quote must belong to a contact.
   contactId: z

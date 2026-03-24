@@ -98,7 +98,15 @@ export function TaskForm({
     },
   });
 
-  const { register, handleSubmit, setValue, watch, formState: { errors } } = form;
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    watch,
+    setError,
+    clearErrors,
+    formState: { errors },
+  } = form;
 
   function onSubmit(data: TaskFormValues) {
     const transformed = data as unknown as TaskFormInput;
@@ -108,10 +116,20 @@ export function TaskForm({
         : await createTask(transformed);
 
       if (!result.success) {
+        if (result.fieldErrors) {
+          Object.entries(result.fieldErrors).forEach(([field, messages]) => {
+            if (!messages?.[0]) return;
+            setError(field as keyof TaskFormValues, {
+              type: "server",
+              message: messages[0],
+            });
+          });
+        }
         toast.error(result.error);
         return;
       }
 
+      clearErrors();
       toast.success(isEditing ? "Task updated." : "Task created.");
       onSuccess?.();
     });
@@ -170,6 +188,9 @@ export function TaskForm({
         <div className="space-y-1.5">
           <Label htmlFor="task-due">Due date</Label>
           <Input id="task-due" type="date" {...register("dueAt")} />
+          {errors.dueAt && (
+            <p className="text-xs text-destructive">{errors.dueAt.message}</p>
+          )}
         </div>
       </div>
 
@@ -196,6 +217,9 @@ export function TaskForm({
             ))}
           </SelectContent>
         </Select>
+        {errors.assignedUserId && (
+          <p className="text-xs text-destructive">{errors.assignedUserId.message}</p>
+        )}
       </div>
 
       {/* Contact link — only show if contacts are passed and no default is locked */}
@@ -222,6 +246,9 @@ export function TaskForm({
               ))}
             </SelectContent>
           </Select>
+          {errors.contactId && (
+            <p className="text-xs text-destructive">{errors.contactId.message}</p>
+          )}
         </div>
       )}
 

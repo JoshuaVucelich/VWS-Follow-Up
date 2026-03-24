@@ -31,6 +31,19 @@ const optUrl = z
   )
   .transform((v) => v || undefined);
 
+const optDate = z
+  .union([z.string(), z.date()])
+  .optional()
+  .or(z.literal(""))
+  .transform((v) => {
+    if (!v) return undefined;
+    if (v instanceof Date) {
+      return isNaN(v.getTime()) ? undefined : v;
+    }
+    const d = new Date(v);
+    return isNaN(d.getTime()) ? undefined : d;
+  });
+
 // ---------------------------------------------------------------------------
 // Contact form schema
 // ---------------------------------------------------------------------------
@@ -70,15 +83,7 @@ export const contactFormSchema = z.object({
   type: z.nativeEnum(ContactType).default("LEAD"),
   assignedUserId: z.string().optional().or(z.literal("")).transform((v) => v || undefined),
   notes: z.string().max(2000, "Note is too long").optional().or(z.literal("")).transform((v) => v || undefined),
-  nextFollowUpAt: z
-    .string()
-    .optional()
-    .or(z.literal(""))
-    .transform((v) => {
-      if (!v) return undefined;
-      const d = new Date(v);
-      return isNaN(d.getTime()) ? undefined : d;
-    }),
+  nextFollowUpAt: optDate,
 });
 
 /** Output type (after Zod transforms) — used for server action args. */

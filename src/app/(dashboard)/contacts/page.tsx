@@ -38,7 +38,8 @@ export default async function ContactsPage({ searchParams }: ContactsPageProps) 
   );
 
   // Parse and validate all filter params (invalid values fall back to defaults)
-  const filters = contactFiltersSchema.parse(rawParams);
+  const parsedFilters = contactFiltersSchema.safeParse(rawParams);
+  const filters = parsedFilters.success ? parsedFilters.data : contactFiltersSchema.parse({});
 
   // Fetch contacts and users in parallel
   const [{ data: contacts, total, page, perPage, totalPages }, users] = await Promise.all([

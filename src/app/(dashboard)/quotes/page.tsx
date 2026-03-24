@@ -36,7 +36,8 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
     Object.entries(searchParams).map(([k, v]) => [k, Array.isArray(v) ? v[0] : v])
   );
 
-  const filters = quoteFiltersSchema.parse(rawParams);
+  const parsedFilters = quoteFiltersSchema.safeParse(rawParams);
+  const filters = parsedFilters.success ? parsedFilters.data : quoteFiltersSchema.parse({});
 
   const [{ data: quotes, total, page, perPage, totalPages }, contacts, currentUser] =
     await Promise.all([

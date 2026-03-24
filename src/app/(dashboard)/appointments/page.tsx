@@ -35,7 +35,8 @@ export default async function AppointmentsPage({ searchParams }: AppointmentsPag
     Object.entries(searchParams).map(([k, v]) => [k, Array.isArray(v) ? v[0] : v])
   );
 
-  const filters = appointmentFiltersSchema.parse(rawParams);
+  const parsedFilters = appointmentFiltersSchema.safeParse(rawParams);
+  const filters = parsedFilters.success ? parsedFilters.data : appointmentFiltersSchema.parse({});
 
   const [{ data: appointments, total, page, perPage, totalPages }, users, contacts, currentUser] =
     await Promise.all([

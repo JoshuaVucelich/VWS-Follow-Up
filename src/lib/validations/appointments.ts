@@ -10,6 +10,20 @@
 import { z } from "zod";
 import { AppointmentType, AppointmentStatus } from "@prisma/client";
 
+function coerceDate(value: string | Date) {
+  const d = value instanceof Date ? value : new Date(value);
+  if (isNaN(d.getTime())) {
+    throw new Error("Invalid date");
+  }
+  return d;
+}
+
+function coerceOptionalDate(value: string | Date | undefined) {
+  if (!value) return undefined;
+  const d = value instanceof Date ? value : new Date(value);
+  return isNaN(d.getTime()) ? undefined : d;
+}
+
 // ---------------------------------------------------------------------------
 // Appointment form schema (create / edit)
 // ---------------------------------------------------------------------------
@@ -25,23 +39,14 @@ export const appointmentFormSchema = z.object({
 
   // startAt is required — datetime-local input sends a string like "2025-01-15T14:00"
   startAt: z
-    .string()
-    .min(1, "Start date/time is required")
-    .transform((v) => {
-      const d = new Date(v);
-      if (isNaN(d.getTime())) throw new Error("Invalid date");
-      return d;
-    }),
+    .union([z.string().min(1, "Start date/time is required"), z.date()])
+    .transform((v) => coerceDate(v)),
 
   endAt: z
-    .string()
+    .union([z.string(), z.date()])
     .optional()
     .or(z.literal(""))
-    .transform((v) => {
-      if (!v) return undefined;
-      const d = new Date(v);
-      return isNaN(d.getTime()) ? undefined : d;
-    }),
+    .transform((v) => coerceOptionalDate(v)),
 
   location: z
     .string()

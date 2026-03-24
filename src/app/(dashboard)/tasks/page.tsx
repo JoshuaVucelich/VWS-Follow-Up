@@ -41,7 +41,8 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
     Object.entries(searchParams).map(([k, v]) => [k, Array.isArray(v) ? v[0] : v])
   );
 
-  const filters = taskFiltersSchema.parse(rawParams);
+  const parsedFilters = taskFiltersSchema.safeParse(rawParams);
+  const filters = parsedFilters.success ? parsedFilters.data : taskFiltersSchema.parse({});
 
   const [{ data: tasks, total, page, perPage, totalPages }, users, contacts, currentUser] =
     await Promise.all([

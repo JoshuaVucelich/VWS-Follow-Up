@@ -65,31 +65,35 @@ export async function createQuote(input: unknown): Promise<ActionResult<Quote>> 
   if (!validated.success) {
     return {
       success: false,
-      error: "Invalid input",
+      error: "Please fix the errors below.",
       fieldErrors: validated.error.flatten().fieldErrors as Record<string, string[]>,
     };
   }
 
   const { contactId, sentAt, ...rest } = validated.data;
+  try {
+    const quote = await db.quote.create({
+      data: {
+        ...rest,
+        contactId,
+        sentAt: sentAt ?? null,
+        createdById: auth.user.id,
+      },
+    });
 
-  const quote = await db.quote.create({
-    data: {
-      ...rest,
-      contactId,
-      sentAt: sentAt ?? null,
-      createdById: auth.user.id,
-    },
-  });
+    void logQuoteActivity(contactId, auth.user.id, "quote.created", {
+      quoteId: quote.id,
+      title: quote.title,
+      status: quote.status,
+    });
 
-  void logQuoteActivity(contactId, auth.user.id, "quote.created", {
-    quoteId: quote.id,
-    title: quote.title,
-    status: quote.status,
-  });
+    revalidateQuotePaths(contactId);
 
-  revalidateQuotePaths(contactId);
-
-  return { success: true, data: quote };
+    return { success: true, data: quote };
+  } catch (error) {
+    console.error("[createQuote]", error);
+    return { success: false, error: "Failed to create quote. Please try again." };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -107,21 +111,25 @@ export async function updateQuote(
   if (!validated.success) {
     return {
       success: false,
-      error: "Invalid input",
+      error: "Please fix the errors below.",
       fieldErrors: validated.error.flatten().fieldErrors as Record<string, string[]>,
     };
   }
 
-  const { contactId, ...rest } = validated.data;
+  const { contactId: _contactId, ...rest } = validated.data;
+  try {
+    const quote = await db.quote.update({
+      where: { id },
+      data: { ...rest },
+    });
 
-  const quote = await db.quote.update({
-    where: { id },
-    data: { ...rest },
-  });
+    revalidateQuotePaths(quote.contactId);
 
-  revalidateQuotePaths(quote.contactId);
-
-  return { success: true, data: quote };
+    return { success: true, data: quote };
+  } catch (error) {
+    console.error("[updateQuote]", error);
+    return { success: false, error: "Failed to update quote. Please try again." };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -150,23 +158,28 @@ export async function updateQuoteStatus(
     DECLINED: { declinedAt: now },
   };
 
-  const quote = await db.quote.update({
-    where: { id },
-    data: {
+  try {
+    const quote = await db.quote.update({
+      where: { id },
+      data: {
+        status,
+        ...((statusTimestamps[status] as object | undefined) ?? {}),
+      },
+    });
+
+    void logQuoteActivity(quote.contactId, auth.user.id, "quote.status_changed", {
+      quoteId: quote.id,
+      title: quote.title,
       status,
-      ...((statusTimestamps[status] as object | undefined) ?? {}),
-    },
-  });
+    });
 
-  void logQuoteActivity(quote.contactId, auth.user.id, "quote.status_changed", {
-    quoteId: quote.id,
-    title: quote.title,
-    status,
-  });
+    revalidateQuotePaths(quote.contactId);
 
-  revalidateQuotePaths(quote.contactId);
-
-  return { success: true, data: quote };
+    return { success: true, data: quote };
+  } catch (error) {
+    console.error("[updateQuoteStatus]", error);
+    return { success: false, error: "Failed to update quote status." };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -182,9 +195,14 @@ export async function deleteQuote(id: string): Promise<ActionResult<{ id: string
     return { success: false, error: "Only owners can delete quotes." };
   }
 
-  const quote = await db.quote.delete({ where: { id } });
+  try {
+    const quote = await db.quote.delete({ where: { id } });
 
-  revalidateQuotePaths(quote.contactId);
+    revalidateQuotePaths(quote.contactId);
 
-  return { success: true, data: { id: quote.id } };
+    return { success: true, data: { id: quote.id } };
+  } catch (error) {
+    console.error("[deleteQuote]", error);
+    return { success: false, error: "Failed to delete quote." };
+  }
 }

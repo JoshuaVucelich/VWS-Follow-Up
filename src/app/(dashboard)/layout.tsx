@@ -37,17 +37,17 @@ export default async function DashboardLayout({ children }: DashboardLayoutProps
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="flex h-[100dvh] overflow-hidden bg-background">
       {/* Sidebar — fixed on the left, full height */}
       <AppSidebar user={session.user} />
 
       {/* Main content area */}
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {/* Top header bar — receives the typed session user */}
         <AppHeader user={session.user} />
 
         {/* Page content — scrollable */}
-        <main className="flex-1 overflow-y-auto scrollbar-thin">
+        <main className="flex-1 overflow-y-auto overscroll-contain scrollbar-thin">
           <div className="container mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
             {children}
           </div>

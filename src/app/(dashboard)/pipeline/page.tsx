@@ -40,7 +40,8 @@ export default async function PipelinePage({ searchParams }: PipelinePageProps) 
     Object.entries(searchParams).map(([k, v]) => [k, Array.isArray(v) ? v[0] : v])
   );
 
-  const filters = pipelineFiltersSchema.parse(rawParams);
+  const parsedFilters = pipelineFiltersSchema.safeParse(rawParams);
+  const filters = parsedFilters.success ? parsedFilters.data : pipelineFiltersSchema.parse({});
 
   // Fetch contacts and users in parallel
   const [contacts, users] = await Promise.all([

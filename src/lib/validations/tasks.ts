@@ -10,6 +10,15 @@
 import { z } from "zod";
 import { TaskPriority, TaskStatus } from "@prisma/client";
 
+function coerceOptionalDate(value: string | Date | undefined) {
+  if (!value) return undefined;
+  if (value instanceof Date) {
+    return isNaN(value.getTime()) ? undefined : value;
+  }
+  const d = new Date(value);
+  return isNaN(d.getTime()) ? undefined : d;
+}
+
 // ---------------------------------------------------------------------------
 // Task form schema (create / edit)
 // ---------------------------------------------------------------------------
@@ -38,14 +47,10 @@ export const taskFormSchema = z.object({
     .or(z.literal(""))
     .transform((v) => v || undefined),
   dueAt: z
-    .string()
+    .union([z.string(), z.date()])
     .optional()
     .or(z.literal(""))
-    .transform((v) => {
-      if (!v) return undefined;
-      const d = new Date(v);
-      return isNaN(d.getTime()) ? undefined : d;
-    }),
+    .transform((v) => coerceOptionalDate(v)),
 });
 
 /** Output type (after Zod transforms) — used for server action args. */
