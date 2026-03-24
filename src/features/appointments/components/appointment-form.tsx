@@ -72,6 +72,8 @@ interface AppointmentFormProps {
   onSuccess?: () => void;
 }
 
+const UNASSIGNED_OPTION = "__unassigned__";
+
 // Converts a Date to "YYYY-MM-DDTHH:MM" for datetime-local input
 function toDatetimeLocal(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -174,14 +176,18 @@ export function AppointmentForm({
         <div className="space-y-1.5">
           <Label htmlFor="appt-assigned">Assigned to</Label>
           <Select
-            value={watch("assignedUserId") ?? ""}
-            onValueChange={(v) => setValue("assignedUserId", v || undefined, { shouldValidate: true })}
+            value={watch("assignedUserId") || UNASSIGNED_OPTION}
+            onValueChange={(v) =>
+              setValue("assignedUserId", v === UNASSIGNED_OPTION ? undefined : v, {
+                shouldValidate: true,
+              })
+            }
           >
             <SelectTrigger id="appt-assigned">
               <SelectValue placeholder="Unassigned" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Unassigned</SelectItem>
+              <SelectItem value={UNASSIGNED_OPTION}>Unassigned</SelectItem>
               {users.map((u) => (
                 <SelectItem key={u.id} value={u.id}>
                   {u.name ?? u.email ?? u.id}

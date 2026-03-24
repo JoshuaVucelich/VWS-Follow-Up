@@ -68,8 +68,7 @@ const PRIORITY_LABELS: Record<string, string> = {
 
 const STATUS_LABELS: Record<string, string> = {
   OPEN: "Open",
-  IN_PROGRESS: "In progress",
-  DONE: "Done",
+  COMPLETED: "Done",
   CANCELED: "Canceled",
 };
 

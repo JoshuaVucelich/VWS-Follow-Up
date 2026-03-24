@@ -38,6 +38,8 @@ interface QuotesFiltersProps {
   total?: number;
 }
 
+const ALL_OPTION = "__all__";
+
 // ---------------------------------------------------------------------------
 // QuotesFilters
 // ---------------------------------------------------------------------------
@@ -88,14 +90,14 @@ export function QuotesFilters({ filters, total }: QuotesFiltersProps) {
 
       {/* Status filter */}
       <Select
-        value={filters.status ?? ""}
-        onValueChange={(v) => updateParam("status", v || undefined)}
+        value={filters.status ?? ALL_OPTION}
+        onValueChange={(v) => updateParam("status", v === ALL_OPTION ? undefined : v)}
       >
         <SelectTrigger className="h-9 w-48">
           <SelectValue placeholder="All statuses" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="">All statuses</SelectItem>
+          <SelectItem value={ALL_OPTION}>All statuses</SelectItem>
           {QUOTE_STATUS_OPTIONS.map((opt) => (
             <SelectItem key={opt.value} value={opt.value}>
               {opt.label}

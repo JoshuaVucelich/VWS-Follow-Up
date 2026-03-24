@@ -82,6 +82,8 @@ interface ContactFormProps {
   redirectTo?: string;
 }
 
+const UNASSIGNED_OPTION = "__unassigned__";
+
 // ---------------------------------------------------------------------------
 // ContactForm
 // ---------------------------------------------------------------------------
@@ -389,14 +391,20 @@ export function ContactForm({ contact, users, redirectTo = "/contacts" }: Contac
           <div className="space-y-1.5">
             <Label htmlFor="assignedUserId">Assign to</Label>
             <Select
-              value={watch("assignedUserId") ?? ""}
-              onValueChange={(v) => setValue("assignedUserId", v || undefined, { shouldValidate: true })}
+              value={watch("assignedUserId") || UNASSIGNED_OPTION}
+              onValueChange={(v) =>
+                setValue(
+                  "assignedUserId",
+                  v === UNASSIGNED_OPTION ? undefined : v,
+                  { shouldValidate: true }
+                )
+              }
             >
               <SelectTrigger id="assignedUserId">
                 <SelectValue placeholder="Unassigned" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Unassigned</SelectItem>
+                <SelectItem value={UNASSIGNED_OPTION}>Unassigned</SelectItem>
                 {users.map((u) => (
                   <SelectItem key={u.id} value={u.id}>
                     {u.name ?? u.email ?? u.id}

@@ -46,6 +46,7 @@ interface PipelineFiltersProps {
 }
 
 const DEBOUNCE_MS = 350;
+const ALL_OPTION = "__all__";
 
 // ---------------------------------------------------------------------------
 // PipelineFilters
@@ -139,14 +140,14 @@ export function PipelineFilters({ filters, users, totalContacts }: PipelineFilte
       {/* Assigned user */}
       {users.length > 0 && (
         <Select
-          value={filters.assignedUserId ?? ""}
-          onValueChange={(v) => pushFilter("assignedUserId", v || undefined)}
+          value={filters.assignedUserId ?? ALL_OPTION}
+          onValueChange={(v) => pushFilter("assignedUserId", v === ALL_OPTION ? undefined : v)}
         >
           <SelectTrigger className="w-[160px]">
             <SelectValue placeholder="All members" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">All members</SelectItem>
+            <SelectItem value={ALL_OPTION}>All members</SelectItem>
             {users.map((u) => (
               <SelectItem key={u.id} value={u.id}>
                 {u.name ?? u.email ?? u.id}
@@ -158,14 +159,14 @@ export function PipelineFilters({ filters, users, totalContacts }: PipelineFilte
 
       {/* Source */}
       <Select
-        value={filters.source ?? ""}
-        onValueChange={(v) => pushFilter("source", v || undefined)}
+        value={filters.source ?? ALL_OPTION}
+        onValueChange={(v) => pushFilter("source", v === ALL_OPTION ? undefined : v)}
       >
         <SelectTrigger className="w-[150px]">
           <SelectValue placeholder="All sources" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="">All sources</SelectItem>
+          <SelectItem value={ALL_OPTION}>All sources</SelectItem>
           {CONTACT_SOURCE_OPTIONS.map((opt) => (
             <SelectItem key={opt.value} value={opt.value}>
               {opt.label}
@@ -176,14 +177,14 @@ export function PipelineFilters({ filters, users, totalContacts }: PipelineFilte
 
       {/* Type */}
       <Select
-        value={filters.type ?? ""}
-        onValueChange={(v) => pushFilter("type", v || undefined)}
+        value={filters.type ?? ALL_OPTION}
+        onValueChange={(v) => pushFilter("type", v === ALL_OPTION ? undefined : v)}
       >
         <SelectTrigger className="w-[130px]">
           <SelectValue placeholder="All types" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="">All types</SelectItem>
+          <SelectItem value={ALL_OPTION}>All types</SelectItem>
           <SelectItem value="LEAD">Leads</SelectItem>
           <SelectItem value="CUSTOMER">Customers</SelectItem>
         </SelectContent>

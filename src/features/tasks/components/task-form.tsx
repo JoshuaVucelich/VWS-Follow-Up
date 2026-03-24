@@ -69,6 +69,9 @@ interface TaskFormProps {
   onSuccess?: () => void;
 }
 
+const UNASSIGNED_OPTION = "__unassigned__";
+const NO_CONTACT_OPTION = "__no_contact__";
+
 // ---------------------------------------------------------------------------
 // TaskForm
 // ---------------------------------------------------------------------------
@@ -174,14 +177,18 @@ export function TaskForm({
       <div className="space-y-1.5">
         <Label htmlFor="task-assignee">Assign to</Label>
         <Select
-          value={watch("assignedUserId") ?? ""}
-          onValueChange={(v) => setValue("assignedUserId", v || undefined, { shouldValidate: true })}
+          value={watch("assignedUserId") || UNASSIGNED_OPTION}
+          onValueChange={(v) =>
+            setValue("assignedUserId", v === UNASSIGNED_OPTION ? undefined : v, {
+              shouldValidate: true,
+            })
+          }
         >
           <SelectTrigger id="task-assignee">
             <SelectValue placeholder="Unassigned" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Unassigned</SelectItem>
+            <SelectItem value={UNASSIGNED_OPTION}>Unassigned</SelectItem>
             {users.map((u) => (
               <SelectItem key={u.id} value={u.id}>
                 {u.name ?? u.email ?? u.id}
@@ -196,14 +203,18 @@ export function TaskForm({
         <div className="space-y-1.5">
           <Label htmlFor="task-contact">Link to contact</Label>
           <Select
-            value={watch("contactId") ?? ""}
-            onValueChange={(v) => setValue("contactId", v || undefined, { shouldValidate: true })}
+            value={watch("contactId") || NO_CONTACT_OPTION}
+            onValueChange={(v) =>
+              setValue("contactId", v === NO_CONTACT_OPTION ? undefined : v, {
+                shouldValidate: true,
+              })
+            }
           >
             <SelectTrigger id="task-contact">
               <SelectValue placeholder="No contact" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">No contact</SelectItem>
+              <SelectItem value={NO_CONTACT_OPTION}>No contact</SelectItem>
               {contacts.map((c) => (
                 <SelectItem key={c.id} value={c.id}>
                   {c.displayName}

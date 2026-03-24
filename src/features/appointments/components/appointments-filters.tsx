@@ -54,6 +54,7 @@ const APPOINTMENT_STATUS_OPTIONS = [
   { label: "Canceled", value: "CANCELED" },
   { label: "Rescheduled", value: "RESCHEDULED" },
 ];
+const ALL_OPTION = "__all__";
 
 export function AppointmentsFilters({
   filters,
@@ -103,14 +104,14 @@ export function AppointmentsFilters({
 
       {/* Type filter */}
       <Select
-        value={filters.type ?? ""}
-        onValueChange={(v) => updateParam("type", v || undefined)}
+        value={filters.type ?? ALL_OPTION}
+        onValueChange={(v) => updateParam("type", v === ALL_OPTION ? undefined : v)}
       >
         <SelectTrigger className="h-9 w-48">
           <SelectValue placeholder="All types" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="">All types</SelectItem>
+          <SelectItem value={ALL_OPTION}>All types</SelectItem>
           {APPOINTMENT_TYPE_OPTIONS.map((opt) => (
             <SelectItem key={opt.value} value={opt.value}>
               {opt.label}
@@ -121,14 +122,14 @@ export function AppointmentsFilters({
 
       {/* Status filter */}
       <Select
-        value={filters.status ?? ""}
-        onValueChange={(v) => updateParam("status", v || undefined)}
+        value={filters.status ?? ALL_OPTION}
+        onValueChange={(v) => updateParam("status", v === ALL_OPTION ? undefined : v)}
       >
         <SelectTrigger className="h-9 w-44">
           <SelectValue placeholder="All statuses" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="">All statuses</SelectItem>
+          <SelectItem value={ALL_OPTION}>All statuses</SelectItem>
           {APPOINTMENT_STATUS_OPTIONS.map((opt) => (
             <SelectItem key={opt.value} value={opt.value}>
               {opt.label}
@@ -140,14 +141,16 @@ export function AppointmentsFilters({
       {/* Assigned user filter */}
       {users.length > 0 && (
         <Select
-          value={filters.assignedUserId ?? ""}
-          onValueChange={(v) => updateParam("assignedUserId", v || undefined)}
+          value={filters.assignedUserId ?? ALL_OPTION}
+          onValueChange={(v) =>
+            updateParam("assignedUserId", v === ALL_OPTION ? undefined : v)
+          }
         >
           <SelectTrigger className="h-9 w-40">
             <SelectValue placeholder="All staff" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">All staff</SelectItem>
+            <SelectItem value={ALL_OPTION}>All staff</SelectItem>
             {users.map((u) => (
               <SelectItem key={u.id} value={u.id}>
                 {u.name ?? u.email ?? u.id}

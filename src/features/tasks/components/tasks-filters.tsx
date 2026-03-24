@@ -40,6 +40,8 @@ interface TasksFiltersProps {
   users: { id: string; name: string | null; email: string | null }[];
 }
 
+const ALL_OPTION = "__all__";
+
 // ---------------------------------------------------------------------------
 // TasksFilters
 // ---------------------------------------------------------------------------
@@ -82,16 +84,15 @@ export function TasksFilters({ filters, users }: TasksFiltersProps) {
     <div className="flex items-center gap-3 flex-wrap">
       {/* Status */}
       <Select
-        value={filters.status ?? ""}
-        onValueChange={(v) => pushFilter("status", v || undefined)}
+        value={filters.status ?? ALL_OPTION}
+        onValueChange={(v) => pushFilter("status", v === ALL_OPTION ? undefined : v)}
       >
         <SelectTrigger className="w-[140px]">
           <SelectValue placeholder="All statuses" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="">All statuses</SelectItem>
+          <SelectItem value={ALL_OPTION}>All statuses</SelectItem>
           <SelectItem value="OPEN">Open</SelectItem>
-          <SelectItem value="IN_PROGRESS">In progress</SelectItem>
           <SelectItem value="COMPLETED">Done</SelectItem>
           <SelectItem value="CANCELED">Canceled</SelectItem>
         </SelectContent>
@@ -99,14 +100,14 @@ export function TasksFilters({ filters, users }: TasksFiltersProps) {
 
       {/* Priority */}
       <Select
-        value={filters.priority ?? ""}
-        onValueChange={(v) => pushFilter("priority", v || undefined)}
+        value={filters.priority ?? ALL_OPTION}
+        onValueChange={(v) => pushFilter("priority", v === ALL_OPTION ? undefined : v)}
       >
         <SelectTrigger className="w-[140px]">
           <SelectValue placeholder="All priorities" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="">All priorities</SelectItem>
+          <SelectItem value={ALL_OPTION}>All priorities</SelectItem>
           {TASK_PRIORITY_OPTIONS.map((opt) => (
             <SelectItem key={opt.value} value={opt.value}>
               {opt.label}
@@ -118,14 +119,14 @@ export function TasksFilters({ filters, users }: TasksFiltersProps) {
       {/* Assigned user */}
       {users.length > 0 && (
         <Select
-          value={filters.assignedUserId ?? ""}
-          onValueChange={(v) => pushFilter("assignedUserId", v || undefined)}
+          value={filters.assignedUserId ?? ALL_OPTION}
+          onValueChange={(v) => pushFilter("assignedUserId", v === ALL_OPTION ? undefined : v)}
         >
           <SelectTrigger className="w-[160px]">
             <SelectValue placeholder="All members" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">All members</SelectItem>
+            <SelectItem value={ALL_OPTION}>All members</SelectItem>
             {users.map((u) => (
               <SelectItem key={u.id} value={u.id}>
                 {u.name ?? u.email ?? u.id}

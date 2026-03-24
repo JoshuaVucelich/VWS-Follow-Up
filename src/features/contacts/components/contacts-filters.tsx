@@ -37,6 +37,7 @@ interface ContactsFiltersProps {
 }
 
 const DEBOUNCE_MS = 350;
+const ALL_OPTION = "__all__";
 
 export function ContactsFilters({ filters, users }: ContactsFiltersProps) {
   const router = useRouter();
@@ -130,14 +131,14 @@ export function ContactsFilters({ filters, users }: ContactsFiltersProps) {
 
       {/* Stage filter */}
       <Select
-        value={filters.stage ?? ""}
-        onValueChange={(v) => pushFilter("stage", v || undefined)}
+        value={filters.stage ?? ALL_OPTION}
+        onValueChange={(v) => pushFilter("stage", v === ALL_OPTION ? undefined : v)}
       >
         <SelectTrigger className="w-[160px]">
           <SelectValue placeholder="All stages" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="">All stages</SelectItem>
+          <SelectItem value={ALL_OPTION}>All stages</SelectItem>
           {PIPELINE_STAGES.map((s) => (
             <SelectItem key={s} value={s}>
               {PIPELINE_STAGE_LABELS[s]}
@@ -148,14 +149,14 @@ export function ContactsFilters({ filters, users }: ContactsFiltersProps) {
 
       {/* Type filter */}
       <Select
-        value={filters.type ?? ""}
-        onValueChange={(v) => pushFilter("type", v || undefined)}
+        value={filters.type ?? ALL_OPTION}
+        onValueChange={(v) => pushFilter("type", v === ALL_OPTION ? undefined : v)}
       >
         <SelectTrigger className="w-[140px]">
           <SelectValue placeholder="All types" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="">All types</SelectItem>
+          <SelectItem value={ALL_OPTION}>All types</SelectItem>
           <SelectItem value="LEAD">Leads</SelectItem>
           <SelectItem value="CUSTOMER">Customers</SelectItem>
         </SelectContent>
@@ -163,14 +164,14 @@ export function ContactsFilters({ filters, users }: ContactsFiltersProps) {
 
       {/* Source filter */}
       <Select
-        value={filters.source ?? ""}
-        onValueChange={(v) => pushFilter("source", v || undefined)}
+        value={filters.source ?? ALL_OPTION}
+        onValueChange={(v) => pushFilter("source", v === ALL_OPTION ? undefined : v)}
       >
         <SelectTrigger className="w-[150px]">
           <SelectValue placeholder="All sources" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="">All sources</SelectItem>
+          <SelectItem value={ALL_OPTION}>All sources</SelectItem>
           {CONTACT_SOURCE_OPTIONS.map((opt) => (
             <SelectItem key={opt.value} value={opt.value}>
               {opt.label}
@@ -182,14 +183,14 @@ export function ContactsFilters({ filters, users }: ContactsFiltersProps) {
       {/* Assigned user filter */}
       {users.length > 0 && (
         <Select
-          value={filters.assignedUserId ?? ""}
-          onValueChange={(v) => pushFilter("assignedUserId", v || undefined)}
+          value={filters.assignedUserId ?? ALL_OPTION}
+          onValueChange={(v) => pushFilter("assignedUserId", v === ALL_OPTION ? undefined : v)}
         >
           <SelectTrigger className="w-[160px]">
             <SelectValue placeholder="All team members" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">All team members</SelectItem>
+            <SelectItem value={ALL_OPTION}>All team members</SelectItem>
             {users.map((u) => (
               <SelectItem key={u.id} value={u.id}>
                 {u.name ?? u.email ?? u.id}
