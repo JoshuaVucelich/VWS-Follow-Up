@@ -1,0 +1,506 @@
+// =============================================================================
+// prisma/schema.prisma
+//
+// Database schema for VWS FollowUp.
+//
+// This is the single source of truth for the database structure.
+// Run `npm run db:generate` after any changes to regenerate the Prisma client.
+// Run `npm run db:migrate` to apply changes to your local database.
+//
+// Design decisions:
+//   - Single workspace per installation (one business, multiple users).
+//   - Contacts use a unified model with `stage` and `type` fields rather than
+//     separate Lead/Customer tables. This keeps queries simpler and makes it
+//     easy to move records through the pipeline without complex migrations.
+//   - All timestamps are stored in UTC. Timezone conversion happens in the UI.
+//   - Soft deletes are handled via an `archived` boolean rather than hard deletes
+//     to preserve history and prevent accidental data loss.
+//
+// For the full schema documentation see: docs/database-schema.md
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+// ENUMS
+// =============================================================================
+
+/// The role a user has within the workspace.
+/// Owner has full access. Staff can manage records but not system settings.
+enum UserRole {
+  OWNER
+  STAFF
+}
+
+/// Pipeline stages a contact can move through.
+/// These represent the typical service business sales/workflow cycle.
+enum ContactStage {
+  NEW_LEAD
+  CONTACTED
+  QUOTE_REQUESTED
+  QUOTE_SENT
+  WAITING_ON_RESPONSE
+  FOLLOW_UP_NEEDED
+  BOOKED
+  IN_PROGRESS
+  COMPLETED
+  LOST
+}
+
+/// Whether the contact is a lead (prospecting) or an active/past customer.
+enum ContactType {
+  LEAD
+  CUSTOMER
+}
+
+/// Overall status of the contact record.
+enum ContactStatus {
+  ACTIVE
+  ARCHIVED
+  BLOCKED
+}
+
+/// Where the contact came from. Used for basic source tracking.
+enum ContactSource {
+  WEBSITE_FORM
+  PHONE_CALL
+  REFERRAL
+  FACEBOOK
+  INSTAGRAM
+  GOOGLE
+  IN_PERSON
+  REPEAT_CUSTOMER
+  OTHER
+}
+
+/// Task completion state.
+enum TaskStatus {
+  OPEN
+  COMPLETED
+  CANCELED
+}
+
+/// How urgently a task needs to be addressed.
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+/// The kind of note being logged. Helps filter the activity timeline.
+enum NoteType {
+  GENERAL
+  CALL_LOG
+  MEETING_NOTE
+  QUOTE_NOTE
+  APPOINTMENT_NOTE
+  STATUS_CHANGE
+}
+
+/// Lifecycle state of a quote/estimate.
+enum QuoteStatus {
+  DRAFT
+  BEING_PREPARED
+  SENT
+  WAITING_ON_RESPONSE
+  ACCEPTED
+  DECLINED
+  EXPIRED
+}
+
+/// What kind of appointment or job is being scheduled.
+enum AppointmentType {
+  ESTIMATE_VISIT
+  PHONE_CALL
+  PHOTO_SESSION
+  SERVICE_APPOINTMENT
+  CONSULTATION
+  INSTALLATION
+  FOLLOW_UP_VISIT
+  OTHER
+}
+
+/// Scheduling/completion state of an appointment.
+enum AppointmentStatus {
+  SCHEDULED
+  CONFIRMED
+  COMPLETED
+  CANCELED
+  RESCHEDULED
+}
+
+// =============================================================================
+// MODELS
+// =============================================================================
+
+/// A user account that can log into the workspace.
+///
+/// Passwords are stored as bcrypt hashes — never plaintext.
+/// The `emailVerified` field is used by Auth.js to track email verification.
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  emailVerified DateTime?
+  passwordHash  String?   // Null if using OAuth provider
+  image         String?   // Profile picture URL
+  role          UserRole  @default(STAFF)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Auth.js relations
+  accounts Account[]
+  sessions Session[]
+
+  // App relations
+  assignedContacts  Contact[]     @relation("AssignedUser")
+  createdContacts   Contact[]     @relation("CreatedBy")
+  tasks             Task[]        @relation("AssignedTask")
+  createdTasks      Task[]        @relation("CreatedTask")
+  notes             Note[]
+  activities        Activity[]
+  quotes            Quote[]
+  assignedAppointments Appointment[] @relation("AssignedAppointment")
+  auditLogs         AuditLog[]
+
+  @@map("users")
+}
+
+/// Auth.js account model for OAuth provider support.
+/// Allows linking Google, GitHub, etc. alongside email/password.
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+/// Auth.js session model.
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+/// Auth.js verification token for email magic links / password reset flows.
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// -----------------------------------------------------------------------------
+
+/// Global settings for the single workspace installation.
+/// There should only ever be one row in this table.
+///
+/// Query: `prisma.businessSettings.findFirst()`
+model BusinessSettings {
+  id           String   @id @default(cuid())
+  businessName String   @default("My Business")
+  logoUrl      String?
+  timezone     String   @default("America/New_York")
+  primaryColor String?  // Hex color for light branding customization
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("business_settings")
+}
+
+// -----------------------------------------------------------------------------
+
+/// A tag that can be applied to contacts for flexible categorization.
+/// Examples: "VIP", "Seasonal", "Referral Source: John", etc.
+model Tag {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  color     String?  // Optional hex color for UI badges
+  createdAt DateTime @default(now())
+
+  contacts ContactTag[]
+
+  @@map("tags")
+}
+
+/// Join table linking contacts to their tags (many-to-many).
+model ContactTag {
+  contactId String
+  tagId     String
+
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  tag     Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([contactId, tagId])
+  @@map("contact_tags")
+}
+
+// -----------------------------------------------------------------------------
+
+/// The central record representing a lead or customer.
+///
+/// A single Contact model handles both leads and customers via the `type` and
+/// `stage` fields. This avoids the complexity of migrating records between
+/// separate tables as they move through the pipeline.
+///
+/// Key fields to understand:
+///   - `stage`          → where they are in the sales/service pipeline
+///   - `type`           → lead (prospecting) or customer (active/past)
+///   - `status`         → ACTIVE, ARCHIVED, or BLOCKED
+///   - `lastContactedAt` → updated manually or via activity logging
+///   - `nextFollowUpAt` → drives the "needs follow-up" dashboard widget
+model Contact {
+  id             String        @id @default(cuid())
+  firstName      String
+  lastName       String
+  businessName   String?
+  displayName    String        // Computed or manually set display name
+  email          String?
+  phone          String?
+  altPhone       String?
+  addressLine1   String?
+  addressLine2   String?
+  city           String?
+  state          String?
+  zip            String?
+  website        String?
+  source         ContactSource @default(OTHER)
+  stage          ContactStage  @default(NEW_LEAD)
+  type           ContactType   @default(LEAD)
+  status         ContactStatus @default(ACTIVE)
+  assignedUserId String?
+  createdById    String?
+  lastContactedAt  DateTime?
+  nextFollowUpAt   DateTime?
+  customerSinceAt  DateTime?   // Set when type transitions to CUSTOMER
+  archivedAt       DateTime?
+  notes          String?       // Short summary note shown in list views
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  assignedUser User?     @relation("AssignedUser", fields: [assignedUserId], references: [id])
+  createdBy    User?     @relation("CreatedBy", fields: [createdById], references: [id])
+  tags         ContactTag[]
+  tasks        Task[]
+  contactNotes Note[]
+  activities   Activity[]
+  quotes       Quote[]
+  appointments Appointment[]
+
+  @@index([stage])
+  @@index([type])
+  @@index([status])
+  @@index([assignedUserId])
+  @@index([nextFollowUpAt])
+  @@map("contacts")
+}
+
+// -----------------------------------------------------------------------------
+
+/// A to-do item or reminder that can be linked to a contact.
+///
+/// Tasks drive the core follow-up workflow. The dashboard "Due Today" and
+/// "Overdue" widgets are powered by querying tasks by `dueAt` and `status`.
+///
+/// Tasks can exist without a contact (e.g., internal team tasks), though
+/// linking to a contact is recommended when possible.
+model Task {
+  id              String       @id @default(cuid())
+  title           String
+  description     String?
+  dueAt           DateTime?
+  priority        TaskPriority @default(MEDIUM)
+  status          TaskStatus   @default(OPEN)
+  assignedUserId  String?
+  contactId       String?
+  appointmentId   String?
+  createdById     String?
+  completedAt     DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  assignedUser User?        @relation("AssignedTask", fields: [assignedUserId], references: [id])
+  createdBy    User?        @relation("CreatedTask", fields: [createdById], references: [id])
+  contact      Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  appointment  Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([dueAt])
+  @@index([assignedUserId])
+  @@index([contactId])
+  @@map("tasks")
+}
+
+// -----------------------------------------------------------------------------
+
+/// A note or log entry attached to a contact.
+///
+/// Notes are immutable once created (no edit, only add) to preserve a
+/// trustworthy history. If you need to update information, add a new note.
+///
+/// The `type` field lets users quickly filter the timeline by event type.
+model Note {
+  id        String   @id @default(cuid())
+  contactId String
+  authorId  String?
+  type      NoteType @default(GENERAL)
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  author  User?   @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([contactId])
+  @@index([type])
+  @@map("notes")
+}
+
+// -----------------------------------------------------------------------------
+
+/// An event in the activity timeline for a contact.
+///
+/// Activities are auto-generated by the app when important things happen
+/// (stage changes, tasks created, quotes updated, etc.). They give the user
+/// a full history without requiring manual note-taking for routine actions.
+///
+/// The `metadata` field is a JSON blob for storing event-specific details
+/// (e.g., the old/new stage when a pipeline move happens).
+model Activity {
+  id         String   @id @default(cuid())
+  contactId  String?
+  userId     String?
+  entityType String   // e.g., "contact", "task", "quote", "appointment"
+  entityId   String?
+  action     String   // e.g., "stage_changed", "task_created", "note_added"
+  metadata   Json?    // Flexible JSON for event-specific data
+  createdAt  DateTime @default(now())
+
+  contact Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  user    User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([contactId])
+  @@index([entityType, entityId])
+  @@map("activities")
+}
+
+// -----------------------------------------------------------------------------
+
+/// A quote or estimate record linked to a contact.
+///
+/// This is intentionally lightweight — it tracks quote status and amount
+/// without being a full invoicing system. PDF generation and payment
+/// processing are out of scope for v1.
+///
+/// The `followUpAt` field drives dashboard reminders for unanswered quotes.
+model Quote {
+  id            String      @id @default(cuid())
+  contactId     String
+  title         String
+  amount        Decimal?    @db.Decimal(10, 2)
+  description   String?     @db.Text
+  status        QuoteStatus @default(DRAFT)
+  sentAt        DateTime?
+  followUpAt    DateTime?
+  acceptedAt    DateTime?
+  declinedAt    DateTime?
+  createdById   String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  createdBy User?   @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([contactId])
+  @@index([status])
+  @@index([followUpAt])
+  @@map("quotes")
+}
+
+// -----------------------------------------------------------------------------
+
+/// A scheduled appointment or job linked to a contact.
+///
+/// This is basic internal scheduling — not a full calendar sync.
+/// The goal is visibility: "what's coming up this week" on the dashboard.
+///
+/// The `type` field helps distinguish estimate visits from actual jobs,
+/// which is useful for reporting and filtering.
+model Appointment {
+  id             String            @id @default(cuid())
+  contactId      String
+  title          String
+  type           AppointmentType   @default(SERVICE_APPOINTMENT)
+  startAt        DateTime
+  endAt          DateTime?
+  location       String?
+  status         AppointmentStatus @default(SCHEDULED)
+  assignedUserId String?
+  notes          String?           @db.Text
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  contact      Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  assignedUser User?   @relation("AssignedAppointment", fields: [assignedUserId], references: [id])
+  tasks        Task[]
+
+  @@index([contactId])
+  @@index([startAt])
+  @@index([status])
+  @@map("appointments")
+}
+
+// -----------------------------------------------------------------------------
+
+/// Audit log for tracking important user-initiated changes.
+///
+/// This is separate from the Activity model. Activity is for the contact
+/// timeline (visible to all users). AuditLog is for admin/security tracking
+/// (e.g., who deleted a contact, who changed a user's role).
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String   // e.g., "contact.deleted", "user.role_changed"
+  entityType String
+  entityId   String?
+  metadata   Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

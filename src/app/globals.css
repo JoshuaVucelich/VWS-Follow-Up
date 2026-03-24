@@ -1,0 +1,151 @@
+/**
+ * src/app/globals.css
+ *
+ * Global styles and CSS custom properties for VWS FollowUp.
+ *
+ * This file serves two purposes:
+ *   1. Import Tailwind's base, components, and utilities layers.
+ *   2. Define the CSS custom properties (variables) that power the
+ *      design token system used throughout the app.
+ *
+ * Color values use HSL format WITHOUT the hsl() wrapper so that Tailwind
+ * can compose them with opacity modifiers (e.g., bg-primary/50).
+ *
+ * Theme tokens follow the shadcn/ui convention. If you ever use the
+ * shadcn CLI to add components, they will work with this setup out of the box.
+ *
+ * To customize the color scheme, change the HSL values in the :root block.
+ * A dark theme can be enabled by adding a .dark block (see commented example).
+ */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* -------------------------------------------------------------------------
+     * Core palette
+     * These values define the full light-mode color theme.
+     * Each variable maps to a Tailwind color utility via tailwind.config.ts.
+     * ------------------------------------------------------------------------- */
+
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+
+    /* Primary — the main brand color used for buttons, links, active states */
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 210 40% 98%;
+
+    /* Secondary — lighter complement to the primary */
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+
+    /* Muted — used for subdued backgrounds and placeholder text */
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+
+    /* Accent — subtle highlight used on hover states and selection */
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+
+    /* Destructive — red tones for delete actions, errors */
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+
+    /* Structural */
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221.2 83.2% 53.3%;
+
+    /* Border radius — change this single variable to retheme all rounded corners */
+    --radius: 0.5rem;
+
+    /* -------------------------------------------------------------------------
+     * Status colors
+     * Used for pipeline stage badges, task priority indicators, etc.
+     * These are intentionally distinct from the core brand palette.
+     * ------------------------------------------------------------------------- */
+
+    /* Pipeline stage colors */
+    --status-new:       210 100% 56%;   /* Blue — new leads */
+    --status-contacted: 262  83% 58%;  /* Purple — reached out */
+    --status-quoted:    38  92% 50%;   /* Amber — quote activity */
+    --status-booked:    160  84% 39%;  /* Green — confirmed work */
+    --status-completed: 142  71% 45%;  /* Lighter green — finished */
+    --status-lost:      0   84% 60%;   /* Red — lost/declined */
+
+    /* Task priority colors */
+    --priority-low:    142  71% 45%;
+    --priority-medium: 38   92% 50%;
+    --priority-high:   25   95% 53%;
+    --priority-urgent: 0    84% 60%;
+  }
+
+  /*
+   * Dark mode (future implementation).
+   * Uncomment and adjust these values when implementing dark mode.
+   * The "dark" class gets applied to <html> via a ThemeProvider component.
+   *
+   * .dark {
+   *   --background: 222.2 84% 4.9%;
+   *   --foreground: 210 40% 98%;
+   *   ... etc.
+   * }
+   */
+
+  /* -------------------------------------------------------------------------
+   * Base element resets
+   * Keep these minimal — let Tailwind handle most element styling.
+   * ------------------------------------------------------------------------- */
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+@layer utilities {
+  /* Utility for visually hiding elements while keeping them accessible */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+  }
+
+  /* Scrollbar styling — subtle and consistent across the app */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--border));
+    border-radius: 3px;
+  }
+}

@@ -1,0 +1,85 @@
+# =============================================================================
+# docker-compose.yml
+#
+# Docker Compose configuration for local development.
+#
+# This file spins up:
+#   - PostgreSQL database
+#   - The Next.js application (optional — you can run `npm run dev` directly)
+#
+# Quick start (database only):
+#   docker compose up db -d
+#
+# Quick start (full stack):
+#   docker compose up -d
+#
+# Stop everything:
+#   docker compose down
+#
+# Stop and remove volumes (full reset):
+#   docker compose down -v
+#
+# For production deployment, see docs/deployment.md and docs/docker.md
+# =============================================================================
+
+version: "3.8"
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL database
+  # ---------------------------------------------------------------------------
+  db:
+    image: postgres:16-alpine
+    container_name: vws_followup_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: vws_followup
+    ports:
+      # Map container port 5432 to host port 5432
+      # Change the host port (left side) if 5432 is already in use on your machine
+      - "5432:5432"
+    volumes:
+      # Persist database data between container restarts
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d vws_followup"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # Next.js application
+  #
+  # Comment this service out if you prefer to run `npm run dev` directly
+  # (which is usually faster for development due to hot reload).
+  # ---------------------------------------------------------------------------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: vws_followup_app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: "postgresql://postgres:password@db:5432/vws_followup?schema=public"
+      NODE_ENV: development
+      # Set this to a real secret in production
+      AUTH_SECRET: "development-only-secret-change-in-production"
+      NEXTAUTH_URL: "http://localhost:3000"
+    volumes:
+      # Mount source code for hot reload during development
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      db:
+        condition: service_healthy
+
+# Named volumes
+volumes:
+  postgres_data:
+    driver: local
