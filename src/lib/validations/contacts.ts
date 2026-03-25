@@ -19,17 +19,28 @@ import { ContactSource, ContactStage, ContactType } from "@prisma/client";
 const optStr = (max = 255) =>
   z.string().max(max).trim().optional().or(z.literal("")).transform((v) => v || undefined);
 
-/** Optional URL — accepts empty string or a valid-ish URL. */
+const URL_PROTOCOL_REGEX = /^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//;
+
+/** Optional URL — accepts empty string or a valid http(s) URL (with or without protocol). */
 const optUrl = z
   .string()
   .trim()
   .optional()
   .or(z.literal(""))
-  .refine(
-    (v) => !v || /^https?:\/\/.+/.test(v),
-    "Must be a valid URL starting with http:// or https://"
-  )
-  .transform((v) => v || undefined);
+  .transform((value) => {
+    if (!value) return undefined;
+    return URL_PROTOCOL_REGEX.test(value) ? value : `https://${value}`;
+  })
+  .refine((value) => {
+    if (!value) return true;
+    try {
+      const parsed = new URL(value);
+      return parsed.protocol === "http:" || parsed.protocol === "https:";
+    } catch {
+      return false;
+    }
+  }, "Must be a valid website URL")
+  .transform((value) => (value ? new URL(value).toString() : undefined));
 
 const optDate = z
   .union([z.string(), z.date()])
@@ -54,14 +65,18 @@ const optDate = z
 export const contactFormSchema = z.object({
   firstName: z
     .string()
-    .min(1, "First name is required")
     .max(100, "First name is too long")
-    .trim(),
+    .trim()
+    .optional()
+    .or(z.literal(""))
+    .transform((v) => v ?? ""),
   lastName: z
     .string()
-    .min(1, "Last name is required")
     .max(100, "Last name is too long")
-    .trim(),
+    .trim()
+    .optional()
+    .or(z.literal(""))
+    .transform((v) => v ?? ""),
   businessName: optStr(200),
   email: z
     .string()
@@ -84,6 +99,14 @@ export const contactFormSchema = z.object({
   assignedUserId: z.string().optional().or(z.literal("")).transform((v) => v || undefined),
   notes: z.string().max(2000, "Note is too long").optional().or(z.literal("")).transform((v) => v || undefined),
   nextFollowUpAt: optDate,
+}).superRefine((data, ctx) => {
+  if (!data.firstName && !data.lastName && !data.businessName) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["businessName"],
+      message: "Add a first name, last name, or business name.",
+    });
+  }
 });
 
 /** Output type (after Zod transforms) — used for server action args. */

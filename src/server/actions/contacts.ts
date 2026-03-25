@@ -32,7 +32,13 @@ function buildDisplayName(
   businessName?: string | null
 ): string {
   const fullName = `${firstName} ${lastName}`.trim();
-  return businessName ? `${fullName} (${businessName})` : fullName;
+  const trimmedBusinessName = businessName?.trim();
+
+  if (fullName && trimmedBusinessName) return `${fullName} (${trimmedBusinessName})`;
+  if (fullName) return fullName;
+  if (trimmedBusinessName) return trimmedBusinessName;
+
+  return "Unnamed Contact";
 }
 
 /** Logs an activity entry for a contact event. Swallows errors — activity logging

@@ -157,9 +157,7 @@ export function ContactForm({ contact, users, redirectTo = "/contacts" }: Contac
         </h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <Label htmlFor="firstName">
-              First name <span className="text-destructive">*</span>
-            </Label>
+            <Label htmlFor="firstName">First name</Label>
             <Input
               id="firstName"
               placeholder="Maria"
@@ -172,9 +170,7 @@ export function ContactForm({ contact, users, redirectTo = "/contacts" }: Contac
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="lastName">
-              Last name <span className="text-destructive">*</span>
-            </Label>
+            <Label htmlFor="lastName">Last name</Label>
             <Input
               id="lastName"
               placeholder="Gonzalez"
@@ -196,6 +192,11 @@ export function ContactForm({ contact, users, redirectTo = "/contacts" }: Contac
             />
             {errors.businessName && (
               <p className="text-xs text-destructive">{errors.businessName.message}</p>
+            )}
+            {!errors.businessName && (
+              <p className="text-xs text-muted-foreground">
+                Use a person name, company name, or both.
+              </p>
             )}
           </div>
         </div>
@@ -251,8 +252,9 @@ export function ContactForm({ contact, users, redirectTo = "/contacts" }: Contac
             <Label htmlFor="website">Website</Label>
             <Input
               id="website"
-              type="url"
-              placeholder="https://example.com"
+              type="text"
+              autoComplete="url"
+              placeholder="vwsdigital.com"
               {...register("website")}
             />
             {errors.website && (
