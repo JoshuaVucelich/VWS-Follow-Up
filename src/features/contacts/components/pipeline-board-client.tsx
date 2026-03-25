@@ -24,7 +24,7 @@
 
 "use client";
 
-import { useState, useMemo, useRef, useTransition } from "react";
+import { useState, useMemo, useRef, useTransition, useEffect } from "react";
 import {
   DragDropContext,
   Droppable,
@@ -35,6 +35,14 @@ import { toast } from "sonner";
 import { updateContactStage } from "@/server/actions/contacts";
 import { PipelineCard } from "@/features/contacts/components/pipeline-card";
 import { PIPELINE_STAGES, PIPELINE_STAGE_LABELS } from "@/lib/constants";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { ContactStage } from "@prisma/client";
 import type { PipelineContact } from "@/server/queries/contacts";
 
@@ -69,9 +77,28 @@ const STAGE_HEADER_COLORS: Record<ContactStage, string> = {
 
 export function PipelineBoardClient({ contacts: initialContacts }: PipelineBoardClientProps) {
   const [contacts, setContacts] = useState<PipelineContact[]>(initialContacts);
+  const [openMenuContactId, setOpenMenuContactId] = useState<string | null>(null);
   // Keep a stable reference to the last confirmed server state for rollback
   const confirmedContacts = useRef<PipelineContact[]>(initialContacts);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const touchStartRef = useRef<{ x: number; y: number; contactId: string } | null>(null);
+  const suppressClickContactIdRef = useRef<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  function clearLongPressTimer() {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+      }
+    };
+  }, []);
 
   // Group contacts into columns by stage
   const columns = useMemo(() => {
@@ -94,16 +121,7 @@ export function PipelineBoardClient({ contacts: initialContacts }: PipelineBoard
   // Drag-and-drop handler
   // -------------------------------------------------------------------------
 
-  function handleDragEnd(result: DropResult) {
-    const { destination, source, draggableId } = result;
-
-    // Dropped outside a column or in the same column
-    if (!destination) return;
-    if (destination.droppableId === source.droppableId) return;
-
-    const newStage = destination.droppableId as ContactStage;
-    const contactId = draggableId;
-
+  function moveContactToStage(contactId: string, newStage: ContactStage) {
     // Optimistically update local state
     setContacts((prev) =>
       prev.map((c) => (c.id === contactId ? { ...c, stage: newStage } : c))
@@ -122,9 +140,22 @@ export function PipelineBoardClient({ contacts: initialContacts }: PipelineBoard
         confirmedContacts.current = confirmedContacts.current.map((c) =>
           c.id === contactId ? { ...c, stage: newStage } : c
         );
-        toast.success("Stage updated.");
+        toast.success(`Moved to ${PIPELINE_STAGE_LABELS[newStage]}.`);
       }
     });
+  }
+
+  function handleDragEnd(result: DropResult) {
+    const { destination, source, draggableId } = result;
+
+    // Dropped outside a column or in the same column
+    if (!destination) return;
+    if (destination.droppableId === source.droppableId) return;
+
+    const newStage = destination.droppableId as ContactStage;
+    const contactId = draggableId;
+
+    moveContactToStage(contactId, newStage);
   }
 
   // -------------------------------------------------------------------------
@@ -132,7 +163,14 @@ export function PipelineBoardClient({ contacts: initialContacts }: PipelineBoard
   // -------------------------------------------------------------------------
 
   return (
-    <DragDropContext onDragEnd={handleDragEnd}>
+    <DragDropContext
+      onDragStart={() => {
+        clearLongPressTimer();
+        touchStartRef.current = null;
+        setOpenMenuContactId(null);
+      }}
+      onDragEnd={handleDragEnd}
+    >
       {/* Horizontal scroll container */}
       <div className="flex gap-3 overflow-x-auto pb-4 h-full scrollbar-thin">
         {PIPELINE_STAGES.map((stage) => {
@@ -181,16 +219,94 @@ export function PipelineBoardClient({ contacts: initialContacts }: PipelineBoard
                         index={index}
                       >
                         {(provided, snapshot) => (
-                          <div
-                            ref={provided.innerRef}
-                            {...provided.draggableProps}
-                            {...provided.dragHandleProps}
+                          <DropdownMenu
+                            open={openMenuContactId === contact.id}
+                            onOpenChange={(open) =>
+                              setOpenMenuContactId(open ? contact.id : null)
+                            }
                           >
-                            <PipelineCard
-                              contact={contact}
-                              isDragging={snapshot.isDragging}
-                            />
-                          </div>
+                            <div
+                              ref={provided.innerRef}
+                              {...provided.draggableProps}
+                              {...provided.dragHandleProps}
+                              className="relative"
+                              onContextMenu={(event) => {
+                                event.preventDefault();
+                                clearLongPressTimer();
+                                setOpenMenuContactId(contact.id);
+                              }}
+                              onPointerDown={(event) => {
+                                if (event.pointerType !== "touch") return;
+                                clearLongPressTimer();
+                                touchStartRef.current = {
+                                  x: event.clientX,
+                                  y: event.clientY,
+                                  contactId: contact.id,
+                                };
+                                longPressTimerRef.current = setTimeout(() => {
+                                  suppressClickContactIdRef.current = contact.id;
+                                  setOpenMenuContactId(contact.id);
+                                }, 500);
+                              }}
+                              onPointerUp={() => {
+                                clearLongPressTimer();
+                                touchStartRef.current = null;
+                              }}
+                              onPointerCancel={() => {
+                                clearLongPressTimer();
+                                touchStartRef.current = null;
+                              }}
+                              onPointerMove={(event) => {
+                                if (event.pointerType !== "touch") return;
+                                if (touchStartRef.current?.contactId !== contact.id) return;
+
+                                const deltaX = Math.abs(event.clientX - touchStartRef.current.x);
+                                const deltaY = Math.abs(event.clientY - touchStartRef.current.y);
+                                if (deltaX > 8 || deltaY > 8) clearLongPressTimer();
+                              }}
+                              onClickCapture={(event) => {
+                                if (suppressClickContactIdRef.current !== contact.id) return;
+                                event.preventDefault();
+                                event.stopPropagation();
+                                suppressClickContactIdRef.current = null;
+                              }}
+                            >
+                              <DropdownMenuTrigger asChild>
+                                <button
+                                  type="button"
+                                  tabIndex={-1}
+                                  aria-hidden="true"
+                                  className="pointer-events-none absolute h-0 w-0 opacity-0"
+                                />
+                              </DropdownMenuTrigger>
+                              <PipelineCard
+                                contact={contact}
+                                isDragging={snapshot.isDragging}
+                              />
+                            </div>
+                            <DropdownMenuContent align="start" className="w-56">
+                              <DropdownMenuLabel>Move to stage</DropdownMenuLabel>
+                              <DropdownMenuSeparator />
+                              {PIPELINE_STAGES.map((stageOption) => (
+                                <DropdownMenuItem
+                                  key={`${contact.id}-${stageOption}`}
+                                  disabled={
+                                    stageOption === contact.stage ||
+                                    isPending ||
+                                    snapshot.isDragging
+                                  }
+                                  onSelect={(event) => {
+                                    event.preventDefault();
+                                    setOpenMenuContactId(null);
+                                    if (stageOption === contact.stage) return;
+                                    moveContactToStage(contact.id, stageOption);
+                                  }}
+                                >
+                                  {PIPELINE_STAGE_LABELS[stageOption]}
+                                </DropdownMenuItem>
+                              ))}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         )}
                       </Draggable>
                     ))}
