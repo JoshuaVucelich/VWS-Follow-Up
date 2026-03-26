@@ -74,18 +74,18 @@
      * ------------------------------------------------------------------------- */
 
     /* Pipeline stage colors */
-    --status-new:       210 100% 56%;   /* Blue — new leads */
-    --status-contacted: 262  83% 58%;  /* Purple — reached out */
-    --status-quoted:    38  92% 50%;   /* Amber — quote activity */
-    --status-booked:    160  84% 39%;  /* Green — confirmed work */
-    --status-completed: 142  71% 45%;  /* Lighter green — finished */
-    --status-lost:      0   84% 60%;   /* Red — lost/declined */
+    --status-new: 210 100% 56%; /* Blue — new leads */
+    --status-contacted: 262 83% 58%; /* Purple — reached out */
+    --status-quoted: 38 92% 50%; /* Amber — quote activity */
+    --status-booked: 160 84% 39%; /* Green — confirmed work */
+    --status-completed: 142 71% 45%; /* Lighter green — finished */
+    --status-lost: 0 84% 60%; /* Red — lost/declined */
 
     /* Task priority colors */
-    --priority-low:    142  71% 45%;
-    --priority-medium: 38   92% 50%;
-    --priority-high:   25   95% 53%;
-    --priority-urgent: 0    84% 60%;
+    --priority-low: 142 71% 45%;
+    --priority-medium: 38 92% 50%;
+    --priority-high: 25 95% 53%;
+    --priority-urgent: 0 84% 60%;
   }
 
   /*
@@ -111,7 +111,9 @@
 
   body {
     @apply bg-background text-foreground;
-    font-feature-settings: "rlig" 1, "calt" 1;
+    font-feature-settings:
+      "rlig" 1,
+      "calt" 1;
   }
 }
 
@@ -147,5 +149,40 @@
   .scrollbar-thin::-webkit-scrollbar-thumb {
     background-color: hsl(var(--border));
     border-radius: 3px;
+  }
+
+  /* Hide scrollbar while preserving scroll behavior (used for synced scroll UIs) */
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Desktop-friendly thick scrollbar for wide board navigation */
+  .scrollbar-strong {
+    scrollbar-width: auto;
+    scrollbar-color: hsl(var(--primary)) hsl(var(--muted));
+  }
+
+  .scrollbar-strong::-webkit-scrollbar {
+    height: 14px;
+  }
+
+  .scrollbar-strong::-webkit-scrollbar-track {
+    background: hsl(var(--muted));
+    border-radius: 999px;
+  }
+
+  .scrollbar-strong::-webkit-scrollbar-thumb {
+    background: hsl(var(--primary));
+    border-radius: 999px;
+    border: 2px solid hsl(var(--muted));
+  }
+
+  .scrollbar-strong::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--foreground));
   }
 }

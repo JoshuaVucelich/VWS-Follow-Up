@@ -52,8 +52,12 @@ function StatPill({
     >
       <Icon className="h-4 w-4 flex-shrink-0 opacity-70" />
       <div>
-        <p className="text-xs text-muted-foreground leading-none mb-0.5">{label}</p>
-        <p className="text-lg font-semibold tabular-nums leading-none">{count}</p>
+        <p className="text-xs text-muted-foreground leading-none mb-0.5">
+          {label}
+        </p>
+        <p className="text-lg font-semibold tabular-nums leading-none">
+          {count}
+        </p>
       </div>
     </div>
   );
@@ -69,15 +73,15 @@ export function PipelineStats({ contacts }: PipelineStatsProps) {
   const newLeads = contacts.filter((c) => c.stage === "NEW_LEAD").length;
 
   const quoted = contacts.filter(
-    (c) => c.stage === "QUOTE_SENT" || c.stage === "WAITING_ON_RESPONSE"
+    (c) => c.stage === "QUOTE_REQUESTED" || c.stage === "QUOTE_SENT",
   ).length;
 
   const booked = contacts.filter(
-    (c) => c.stage === "BOOKED" || c.stage === "IN_PROGRESS"
+    (c) => c.stage === "BOOKED" || c.stage === "IN_PROGRESS",
   ).length;
 
   const overdueFollowUps = contacts.filter(
-    (c) => c.nextFollowUpAt != null && c.nextFollowUpAt < new Date()
+    (c) => c.nextFollowUpAt != null && c.nextFollowUpAt < new Date(),
   ).length;
 
   return (
