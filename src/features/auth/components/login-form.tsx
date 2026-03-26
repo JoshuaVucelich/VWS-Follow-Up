@@ -26,6 +26,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { loginSchema, type LoginInput } from "@/lib/validations/auth";
+import { requestPasswordReset } from "@/server/actions/auth";
 
 type LoginFormValues = LoginInput;
 
@@ -38,15 +39,54 @@ export function LoginForm() {
   const searchParams = useSearchParams();
   const [showPassword, setShowPassword] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [resetPending, setResetPending] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [resetNotice, setResetNotice] = useState<string | null>(null);
 
   const {
     register,
     handleSubmit,
+    getValues,
+    trigger,
     formState: { errors, isSubmitting },
   } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: { email: "", password: "" },
   });
+
+  async function handleForgotPassword() {
+    setResetError(null);
+    setResetNotice(null);
+
+    const isEmailValid = await trigger("email");
+    if (!isEmailValid) {
+      setResetError("Enter a valid email address first.");
+      return;
+    }
+
+    const email = getValues("email")?.trim().toLowerCase();
+    if (!email) {
+      setResetError("Enter your email address first.");
+      return;
+    }
+
+    setResetPending(true);
+    try {
+      const result = await requestPasswordReset({ email });
+      if (!result.success) {
+        setResetError(
+          result.error ?? "Failed to send reset link. Please try again.",
+        );
+        return;
+      }
+
+      setResetNotice(
+        `If an account exists for ${email}, we sent a password reset link.`,
+      );
+    } finally {
+      setResetPending(false);
+    }
+  }
 
   const onSubmit = async (values: LoginFormValues) => {
     setServerError(null);
@@ -89,7 +129,9 @@ export function LoginForm() {
           autoFocus
           placeholder="you@example.com"
           aria-describedby={errors.email ? "email-error" : undefined}
-          className={cn(errors.email && "border-destructive focus-visible:ring-destructive")}
+          className={cn(
+            errors.email && "border-destructive focus-visible:ring-destructive",
+          )}
           {...register("email")}
         />
         {errors.email && (
@@ -101,7 +143,17 @@ export function LoginForm() {
 
       {/* Password field */}
       <div className="space-y-1.5">
-        <Label htmlFor="password">Password</Label>
+        <div className="flex items-center justify-between gap-2">
+          <Label htmlFor="password">Password</Label>
+          <button
+            type="button"
+            onClick={handleForgotPassword}
+            disabled={resetPending || isSubmitting}
+            className="text-xs font-medium text-primary hover:underline disabled:opacity-60 disabled:no-underline"
+          >
+            {resetPending ? "Sending reset link…" : "Forgot password?"}
+          </button>
+        </div>
         <div className="relative">
           <Input
             id="password"
@@ -111,7 +163,8 @@ export function LoginForm() {
             aria-describedby={errors.password ? "password-error" : undefined}
             className={cn(
               "pr-10",
-              errors.password && "border-destructive focus-visible:ring-destructive"
+              errors.password &&
+                "border-destructive focus-visible:ring-destructive",
             )}
             {...register("password")}
           />
@@ -129,8 +182,22 @@ export function LoginForm() {
           </button>
         </div>
         {errors.password && (
-          <p id="password-error" className="text-xs text-destructive" role="alert">
+          <p
+            id="password-error"
+            className="text-xs text-destructive"
+            role="alert"
+          >
             {errors.password.message}
+          </p>
+        )}
+        {resetError && (
+          <p className="text-xs text-destructive" role="alert">
+            {resetError}
+          </p>
+        )}
+        {resetNotice && (
+          <p className="text-xs text-green-700" role="status">
+            {resetNotice}
           </p>
         )}
       </div>
@@ -146,11 +213,7 @@ export function LoginForm() {
       )}
 
       {/* Submit button */}
-      <Button
-        type="submit"
-        className="w-full"
-        disabled={isSubmitting}
-      >
+      <Button type="submit" className="w-full" disabled={isSubmitting}>
         {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
         {isSubmitting ? "Signing in…" : "Sign in"}
       </Button>
