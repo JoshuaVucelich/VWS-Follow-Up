@@ -32,6 +32,7 @@ Service businesses that need to track leads and follow up consistently without p
 - **Quote status tracking** — log estimate status without full invoicing
 - **Appointments and jobs** — basic scheduling and job visibility
 - **CSV import / export** — bring your data in, take it out
+- **QuickBooks integration** — connect a QuickBooks Online company from Settings
 - **Team support** — multiple users, role-based access (Owner / Staff)
 - **Self-hostable** — Docker, VPS, Railway, DigitalOcean, Vercel, and more
 

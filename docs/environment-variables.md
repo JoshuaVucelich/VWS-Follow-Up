@@ -67,6 +67,31 @@ NEXTAUTH_URL="https://your-domain.com"
 
 ## Optional variables
 
+### QuickBooks integration
+
+Required only if you want users to connect a QuickBooks Online account from Settings.
+
+```
+QUICKBOOKS_CLIENT_ID="your-intuit-app-client-id"
+QUICKBOOKS_CLIENT_SECRET="your-intuit-app-client-secret"
+
+# Optional: defaults to sandbox
+QUICKBOOKS_ENVIRONMENT="sandbox"  # or "production"
+
+# Optional: defaults to com.intuit.quickbooks.accounting
+QUICKBOOKS_OAUTH_SCOPE="com.intuit.quickbooks.accounting"
+```
+
+QuickBooks callback URL used by this app:
+
+```
+${NEXTAUTH_URL}/api/integrations/quickbooks/callback
+```
+
+Add that exact URL to your Intuit developer app's Redirect URIs list.
+
+---
+
 ### Email / SMTP
 
 Required for password reset emails and future email reminders.

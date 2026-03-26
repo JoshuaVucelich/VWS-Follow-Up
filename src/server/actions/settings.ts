@@ -17,6 +17,11 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { requireAuthForAction } from "@/lib/session";
 import {
+  QUICKBOOKS_REVOKE_URL,
+  getQuickBooksBasicAuthHeader,
+  getQuickBooksServerConfig,
+} from "@/lib/quickbooks";
+import {
   businessSettingsSchema,
   userProfileSchema,
 } from "@/lib/validations/settings";
@@ -176,4 +181,51 @@ export async function reactivateUser(
   revalidatePath("/settings");
 
   return { success: true, data: { id: targetUserId } };
+}
+
+// ---------------------------------------------------------------------------
+// disconnectQuickBooks
+// ---------------------------------------------------------------------------
+
+export async function disconnectQuickBooks(): Promise<ActionResult<{ disconnected: boolean }>> {
+  const auth = await requireAuthForAction();
+  if (!auth.success) return auth;
+
+  if (auth.user.role !== "OWNER") {
+    return { success: false, error: "Only workspace owners can disconnect QuickBooks." };
+  }
+
+  const connection = await db.quickBooksConnection.findFirst({
+    select: { id: true, refreshToken: true },
+  });
+
+  if (!connection) {
+    return { success: true, data: { disconnected: false } };
+  }
+
+  const quickBooks = getQuickBooksServerConfig();
+  if (quickBooks.isConfigured) {
+    try {
+      // Revoke the refresh token at Intuit before deleting the local record.
+      await fetch(QUICKBOOKS_REVOKE_URL, {
+        method: "POST",
+        headers: {
+          Authorization: getQuickBooksBasicAuthHeader(quickBooks.clientId, quickBooks.clientSecret),
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+        },
+        body: new URLSearchParams({ token: connection.refreshToken }),
+        cache: "no-store",
+      });
+    } catch {
+      // If revoke fails (network/transient issue), still remove the local connection.
+    }
+  }
+
+  await db.quickBooksConnection.delete({
+    where: { id: connection.id },
+  });
+
+  revalidatePath("/settings");
+  return { success: true, data: { disconnected: true } };
 }

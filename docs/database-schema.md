@@ -52,6 +52,26 @@ Global workspace settings. Should always have exactly one row.
 
 ---
 
+### `quickbooks_connections`
+Workspace-level QuickBooks Online OAuth credentials.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | String (cuid) | Primary key |
+| realmId | String | Intuit company realm ID (unique) |
+| companyName | String? | Best-effort company display name |
+| accessToken | Text | Current OAuth access token |
+| refreshToken | Text | OAuth refresh token |
+| tokenType | String? | Usually `bearer` |
+| scope | String? | Granted OAuth scope |
+| accessTokenExpiresAt | DateTime | Access token expiration time |
+| refreshTokenExpiresAt | DateTime? | Refresh token expiration if provided |
+| connectedByUserId | String? | FK → users (who connected the account) |
+| createdAt | DateTime | |
+| updatedAt | DateTime | |
+
+---
+
 ### `contacts`
 The central record. Represents both leads and customers.
 

@@ -19,13 +19,28 @@ import { BusinessSettingsForm } from "@/features/settings/components/business-se
 import { UserProfileForm } from "@/features/settings/components/user-profile-form";
 import { TeamMembersSection } from "@/features/settings/components/team-members-section";
 import { ImportExportSection } from "@/features/settings/components/import-export-section";
+import { QuickBooksIntegrationSection } from "@/features/settings/components/quickbooks-integration-section";
 import { Separator } from "@/components/ui/separator";
 
 export const metadata: Metadata = {
   title: "Settings",
 };
 
-export default async function SettingsPage() {
+interface SettingsPageProps {
+  searchParams?: {
+    quickbooks?: string | string[];
+    quickbooks_error?: string | string[];
+  };
+}
+
+function firstValue(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+export default async function SettingsPage({ searchParams }: SettingsPageProps) {
+  const quickbooksStatus = firstValue(searchParams?.quickbooks);
+  const quickbooksError = firstValue(searchParams?.quickbooks_error);
+
   return (
     <div className="space-y-8 max-w-3xl">
       {/* Page header */}
@@ -58,6 +73,17 @@ export default async function SettingsPage() {
       <section>
         <h2 className="text-lg font-medium mb-4">Team Members</h2>
         <TeamMembersSection />
+      </section>
+
+      <Separator />
+
+      {/* Integrations */}
+      <section>
+        <h2 className="text-lg font-medium mb-4">Integrations</h2>
+        <QuickBooksIntegrationSection
+          oauthStatus={quickbooksStatus}
+          oauthError={quickbooksError}
+        />
       </section>
 
       <Separator />

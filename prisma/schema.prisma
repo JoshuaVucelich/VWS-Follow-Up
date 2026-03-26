@@ -171,6 +171,7 @@ model User {
   quotes            Quote[]
   assignedAppointments Appointment[] @relation("AssignedAppointment")
   auditLogs         AuditLog[]
+  quickBooksConnections QuickBooksConnection[] @relation("QuickBooksConnectedBy")
 
   @@map("users")
 }
@@ -235,6 +236,29 @@ model BusinessSettings {
   updatedAt    DateTime @updatedAt
 
   @@map("business_settings")
+}
+
+// -----------------------------------------------------------------------------
+
+/// Stores the workspace-level QuickBooks Online OAuth connection.
+/// There should only be one active row for a single-workspace installation.
+model QuickBooksConnection {
+  id                    String    @id @default(cuid())
+  realmId               String    @unique
+  companyName           String?
+  accessToken           String    @db.Text
+  refreshToken          String    @db.Text
+  tokenType             String?
+  scope                 String?
+  accessTokenExpiresAt  DateTime
+  refreshTokenExpiresAt DateTime?
+  connectedByUserId     String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  connectedByUser User? @relation("QuickBooksConnectedBy", fields: [connectedByUserId], references: [id], onDelete: SetNull)
+
+  @@map("quickbooks_connections")
 }
 
 // -----------------------------------------------------------------------------
