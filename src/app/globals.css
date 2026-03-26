@@ -88,17 +88,47 @@
     --priority-urgent: 0 84% 60%;
   }
 
-  /*
-   * Dark mode (future implementation).
-   * Uncomment and adjust these values when implementing dark mode.
-   * The "dark" class gets applied to <html> via a ThemeProvider component.
-   *
-   * .dark {
-   *   --background: 222.2 84% 4.9%;
-   *   --foreground: 210 40% 98%;
-   *   ... etc.
-   * }
-   */
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 217.2 91.2% 59.8%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 224.3 76.3% 48%;
+
+    --status-new: 210 100% 62%;
+    --status-contacted: 263 87% 66%;
+    --status-quoted: 42 96% 56%;
+    --status-booked: 162 74% 45%;
+    --status-completed: 143 65% 50%;
+    --status-lost: 0 78% 64%;
+
+    --priority-low: 143 65% 50%;
+    --priority-medium: 42 96% 56%;
+    --priority-high: 26 90% 60%;
+    --priority-urgent: 0 78% 64%;
+  }
 
   /* -------------------------------------------------------------------------
    * Base element resets

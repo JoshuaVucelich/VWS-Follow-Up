@@ -15,6 +15,7 @@
 import { Search, Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MobileNav } from "./mobile-nav";
+import { ThemeToggle } from "./theme-toggle";
 
 interface AppHeaderProps {
   user: {
@@ -48,6 +49,8 @@ export function AppHeader({ user }: AppHeaderProps) {
 
       {/* Right side actions */}
       <div className="flex items-center gap-2">
+        <ThemeToggle />
+
         {/* Notification bell — placeholder, implement in future milestone */}
         <Button
           variant="ghost"

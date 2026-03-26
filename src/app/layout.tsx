@@ -19,6 +19,7 @@
 
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
+import Script from "next/script";
 import { SessionProvider } from "next-auth/react";
 import { Toaster } from "sonner";
 import "./globals.css";
@@ -30,6 +31,27 @@ const inter = Inter({
   variable: "--font-inter",
   display: "swap", // Prevent invisible text during font load
 });
+
+const THEME_INIT_SCRIPT = `
+(() => {
+  try {
+    const storageKey = "vws-followup-theme";
+    const storedTheme = localStorage.getItem(storageKey);
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const theme =
+      storedTheme === "dark" || storedTheme === "light"
+        ? storedTheme
+        : prefersDark
+          ? "dark"
+          : "light";
+
+    document.documentElement.classList.toggle("dark", theme === "dark");
+    document.documentElement.style.colorScheme = theme;
+  } catch {
+    // Ignore read errors (private mode, strict browser policies, etc.)
+  }
+})();
+`;
 
 /**
  * Static metadata for the application.
@@ -82,6 +104,11 @@ interface RootLayoutProps {
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="en" suppressHydrationWarning className={inter.variable}>
+      <head>
+        <Script id="theme-init" strategy="beforeInteractive">
+          {THEME_INIT_SCRIPT}
+        </Script>
+      </head>
       <body className="min-h-screen bg-background font-sans antialiased">
         {/*
          * SessionProvider makes the Auth.js session available to all client
