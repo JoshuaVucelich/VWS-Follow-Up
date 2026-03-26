@@ -87,11 +87,17 @@ function buildQuickBooksApiUrl(
     realmId: string;
     environment: "sandbox" | "production";
     path: string;
+    queryParams?: Record<string, string>;
   },
 ): string {
-  const { realmId, environment, path } = input;
+  const { realmId, environment, path, queryParams } = input;
   const url = new URL(`/v3/company/${realmId}${path}`, getQuickBooksApiBaseUrl(environment));
   url.searchParams.set("minorversion", "75");
+  if (queryParams) {
+    for (const [key, value] of Object.entries(queryParams)) {
+      url.searchParams.set(key, value);
+    }
+  }
   return url.toString();
 }
 
@@ -260,6 +266,124 @@ async function createQuickBooksCustomer(input: {
   }
 
   return { success: true, customerId: responseData.Customer.Id };
+}
+
+async function syncContactRecordToQuickBooks(contact: {
+  id: string;
+  displayName: string;
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  phone: string | null;
+  addressLine1: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+  quickBooksCustomerId: string | null;
+}): Promise<{ success: true; customerId: string | null } | { success: false; error: string }> {
+  const quickBooksConnection = await getFreshQuickBooksConnection();
+  if (!quickBooksConnection.success) {
+    return { success: false, error: quickBooksConnection.error };
+  }
+
+  if (!quickBooksConnection.connection) {
+    return { success: true, customerId: null };
+  }
+
+  const { connection, environment } = quickBooksConnection;
+
+  const customerPayload: Record<string, unknown> = {
+    DisplayName: contact.displayName,
+  };
+  if (contact.firstName) customerPayload.GivenName = contact.firstName;
+  if (contact.lastName) customerPayload.FamilyName = contact.lastName;
+  if (contact.email) customerPayload.PrimaryEmailAddr = { Address: contact.email };
+  if (contact.phone) customerPayload.PrimaryPhone = { FreeFormNumber: contact.phone };
+
+  const billAddress: Record<string, string> = {};
+  if (contact.addressLine1) billAddress.Line1 = contact.addressLine1;
+  if (contact.city) billAddress.City = contact.city;
+  if (contact.state) billAddress.CountrySubDivisionCode = contact.state;
+  if (contact.zip) billAddress.PostalCode = contact.zip;
+  if (Object.keys(billAddress).length > 0) customerPayload.BillAddr = billAddress;
+
+  if (contact.quickBooksCustomerId) {
+    const existingCustomerResponse = await fetch(
+      buildQuickBooksApiUrl({
+        realmId: connection.realmId,
+        environment,
+        path: `/customer/${contact.quickBooksCustomerId}`,
+      }),
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${connection.accessToken}`,
+          Accept: "application/json",
+        },
+        cache: "no-store",
+      },
+    );
+
+    const existingCustomerData = await readResponsePayload(existingCustomerResponse) as {
+      Customer?: { SyncToken?: string };
+    };
+
+    const syncToken = existingCustomerData?.Customer?.SyncToken;
+    if (existingCustomerResponse.ok && syncToken) {
+      const updateResponse = await fetch(
+        buildQuickBooksApiUrl({
+          realmId: connection.realmId,
+          environment,
+          path: "/customer",
+          queryParams: { operation: "update" },
+        }),
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${connection.accessToken}`,
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            ...customerPayload,
+            Id: contact.quickBooksCustomerId,
+            SyncToken: syncToken,
+            sparse: true,
+          }),
+          cache: "no-store",
+        },
+      );
+
+      if (updateResponse.ok) {
+        return { success: true, customerId: contact.quickBooksCustomerId };
+      }
+    }
+  }
+
+  const createdCustomer = await createQuickBooksCustomer({
+    connection,
+    environment,
+    displayName: contact.displayName,
+    firstName: contact.firstName || undefined,
+    lastName: contact.lastName || undefined,
+    email: contact.email ?? undefined,
+    phone: contact.phone ?? undefined,
+    addressLine1: contact.addressLine1 ?? undefined,
+    city: contact.city ?? undefined,
+    state: contact.state ?? undefined,
+    zip: contact.zip ?? undefined,
+  });
+
+  if (!createdCustomer.success) {
+    return createdCustomer;
+  }
+
+  await db.contact.update({
+    where: { id: contact.id },
+    data: { quickBooksCustomerId: createdCustomer.customerId },
+  });
+
+  return { success: true, customerId: createdCustomer.customerId };
 }
 
 /** Logs an activity entry for a contact event. Swallows errors — activity logging
@@ -443,6 +567,26 @@ export async function updateContact(
       },
     });
 
+    const quickBooksSync = await syncContactRecordToQuickBooks({
+      id: contact.id,
+      displayName: contact.displayName,
+      firstName: contact.firstName,
+      lastName: contact.lastName,
+      email: contact.email,
+      phone: contact.phone,
+      addressLine1: contact.addressLine1,
+      city: contact.city,
+      state: contact.state,
+      zip: contact.zip,
+      quickBooksCustomerId: contact.quickBooksCustomerId,
+    });
+
+    if (!quickBooksSync.success) {
+      await logActivity(id, auth.user.id, "contact.quickbooks_sync_failed", {
+        error: quickBooksSync.error,
+      });
+    }
+
     // Log stage change if it happened
     if (current.stage !== data.stage) {
       await logActivity(id, auth.user.id, "stage.changed", {
@@ -460,6 +604,63 @@ export async function updateContact(
     console.error("[updateContact]", error);
     return { success: false, error: "Failed to update contact. Please try again." };
   }
+}
+
+// ---------------------------------------------------------------------------
+// syncAllContactsToQuickBooks
+// ---------------------------------------------------------------------------
+
+export async function syncAllContactsToQuickBooks(): Promise<
+  ActionResult<{ synced: number; failed: number; skipped: number; errors: string[] }>
+> {
+  const auth = await requireAuthForAction();
+  if (!auth.success) return auth;
+
+  if (auth.user.role !== "OWNER") {
+    return { success: false, error: "Only workspace owners can run a full QuickBooks contact sync." };
+  }
+
+  const contacts = await db.contact.findMany({
+    where: { status: { not: "ARCHIVED" } },
+    select: {
+      id: true,
+      displayName: true,
+      firstName: true,
+      lastName: true,
+      email: true,
+      phone: true,
+      addressLine1: true,
+      city: true,
+      state: true,
+      zip: true,
+      quickBooksCustomerId: true,
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  let synced = 0;
+  let failed = 0;
+  let skipped = 0;
+  const errors: string[] = [];
+
+  for (const contact of contacts) {
+    const result = await syncContactRecordToQuickBooks(contact);
+    if (!result.success) {
+      failed++;
+      if (errors.length < 20) {
+        errors.push(`${contact.displayName}: ${result.error}`);
+      }
+      continue;
+    }
+
+    if (result.customerId) synced++;
+    else skipped++;
+  }
+
+  revalidatePath("/contacts");
+  revalidatePath("/dashboard");
+
+  return { success: true, data: { synced, failed, skipped, errors } };
 }
 
 // ---------------------------------------------------------------------------

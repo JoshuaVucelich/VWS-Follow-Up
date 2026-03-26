@@ -6,12 +6,14 @@
 
 "use client";
 
-import { useTransition } from "react";
+import { useEffect, useRef, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { disconnectQuickBooks } from "@/server/actions/settings";
+import { syncAllContactsToQuickBooks } from "@/server/actions/contacts";
+import { syncAllQuotesToQuickBooks } from "@/server/actions/quotes";
 
 interface QuickBooksConnectionView {
   companyName: string | null;
@@ -52,6 +54,45 @@ export function QuickBooksIntegrationSectionClient({
 }: QuickBooksIntegrationSectionClientProps) {
   const router = useRouter();
   const [disconnectPending, startDisconnectTransition] = useTransition();
+  const [syncPending, startSyncTransition] = useTransition();
+  const autoSyncStarted = useRef(false);
+
+  function runFullSync(showSuccessToast: boolean) {
+    startSyncTransition(async () => {
+      const contactsResult = await syncAllContactsToQuickBooks();
+      const quotesResult = await syncAllQuotesToQuickBooks();
+
+      if (!contactsResult.success) {
+        toast.error(contactsResult.error);
+        return;
+      }
+
+      if (!quotesResult.success) {
+        toast.error(quotesResult.error);
+        return;
+      }
+
+      if (showSuccessToast) {
+        toast.success(
+          `QuickBooks sync complete: ${contactsResult.data.synced} contacts, ${quotesResult.data.synced} quotes.`,
+        );
+      }
+
+      if (contactsResult.data.failed > 0 || quotesResult.data.failed > 0) {
+        toast.error(
+          `Some records failed: ${contactsResult.data.failed + quotesResult.data.failed}. Use Sync all now to retry.`,
+        );
+      }
+
+      router.refresh();
+    });
+  }
+
+  useEffect(() => {
+    if (oauthStatus !== "connected" || !isConfigured || autoSyncStarted.current) return;
+    autoSyncStarted.current = true;
+    runFullSync(false);
+  }, [oauthStatus, isConfigured]);
 
   function handleDisconnect() {
     if (!confirm("Disconnect QuickBooks from this workspace?")) return;
@@ -152,11 +193,26 @@ export function QuickBooksIntegrationSectionClient({
               </a>
             </Button>
             {connection && (
+              <Button
+                variant="secondary"
+                onClick={() => runFullSync(true)}
+                disabled={syncPending || disconnectPending}
+              >
+                {syncPending ? "Syncing…" : "Sync all now"}
+              </Button>
+            )}
+            {connection && (
               <Button variant="outline" onClick={handleDisconnect} disabled={disconnectPending}>
                 {disconnectPending ? "Disconnecting…" : "Disconnect"}
               </Button>
             )}
           </div>
+
+          {syncPending && (
+            <p className="text-xs text-muted-foreground">
+              Sync in progress. Existing contacts and quotes are being pushed to QuickBooks.
+            </p>
+          )}
         </div>
       )}
     </div>

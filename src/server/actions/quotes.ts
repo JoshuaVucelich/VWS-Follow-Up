@@ -168,12 +168,17 @@ async function refreshQuickBooksConnectionToken(
   return { success: true, connection: updated };
 }
 
-async function getFreshQuickBooksConnection(): Promise<
-  { success: true; connection: QuickBooksConnectionRecord; environment: "sandbox" | "production" }
+async function getFreshQuickBooksConnection(
+  requireConnection = true,
+): Promise<
+  { success: true; connection: QuickBooksConnectionRecord | null; environment: "sandbox" | "production" }
   | { success: false; error: string }
 > {
   const quickBooks = getQuickBooksServerConfig();
   if (!quickBooks.isConfigured) {
+    if (!requireConnection) {
+      return { success: true, connection: null, environment: quickBooks.environment };
+    }
     return { success: false, error: "QuickBooks is not configured on this server." };
   }
 
@@ -189,6 +194,9 @@ async function getFreshQuickBooksConnection(): Promise<
   });
 
   if (!connection) {
+    if (!requireConnection) {
+      return { success: true, connection: null, environment: quickBooks.environment };
+    }
     return { success: false, error: "No QuickBooks account is connected. Connect QuickBooks in Settings first." };
   }
 
@@ -236,6 +244,8 @@ export async function createQuote(input: unknown): Promise<ActionResult<Quote>> 
       status: quote.status,
     });
 
+    await syncQuoteToQuickBooksInternal(quote.id, auth.user.id, false);
+
     revalidateQuotePaths(contactId);
 
     return { success: true, data: quote };
@@ -271,6 +281,8 @@ export async function updateQuote(
       where: { id },
       data: { ...rest },
     });
+
+    await syncQuoteToQuickBooksInternal(quote.id, auth.user.id, false);
 
     revalidateQuotePaths(quote.contactId);
 
@@ -322,6 +334,8 @@ export async function updateQuoteStatus(
       status,
     });
 
+    await syncQuoteToQuickBooksInternal(quote.id, auth.user.id, false);
+
     revalidateQuotePaths(quote.contactId);
 
     return { success: true, data: quote };
@@ -335,12 +349,11 @@ export async function updateQuoteStatus(
 // syncQuoteToQuickBooks
 // ---------------------------------------------------------------------------
 
-export async function syncQuoteToQuickBooks(
+async function syncQuoteToQuickBooksInternal(
   id: string,
-): Promise<ActionResult<{ quoteId: string; estimateId: string }>> {
-  const auth = await requireAuthForAction();
-  if (!auth.success) return auth;
-
+  userId: string | undefined,
+  requireConnection: boolean,
+): Promise<ActionResult<{ quoteId: string; estimateId: string | null }>> {
   const quote = await db.quote.findUnique({
     where: { id },
     select: {
@@ -381,17 +394,7 @@ export async function syncQuoteToQuickBooks(
     return { success: false, error: "Quote is missing a contact." };
   }
 
-  const amount = quote.amount != null ? Number.parseFloat(quote.amount.toString()) : NaN;
-  if (!Number.isFinite(amount) || amount <= 0) {
-    await db.quote.update({
-      where: { id: quote.id },
-      data: { quickBooksSyncError: "Quote amount must be greater than 0 before syncing to QuickBooks." },
-    });
-    revalidateQuotePaths(quote.contactId);
-    return { success: false, error: "Quote amount must be greater than $0.00 before syncing." };
-  }
-
-  const quickBooksConnection = await getFreshQuickBooksConnection();
+  const quickBooksConnection = await getFreshQuickBooksConnection(requireConnection);
   if (!quickBooksConnection.success) {
     await db.quote.update({
       where: { id: quote.id },
@@ -402,6 +405,19 @@ export async function syncQuoteToQuickBooks(
   }
 
   const { connection, environment } = quickBooksConnection;
+  if (!connection) {
+    return { success: true, data: { quoteId: quote.id, estimateId: quote.quickBooksEstimateId } };
+  }
+
+  const amount = quote.amount != null ? Number.parseFloat(quote.amount.toString()) : NaN;
+  if (!Number.isFinite(amount) || amount <= 0) {
+    await db.quote.update({
+      where: { id: quote.id },
+      data: { quickBooksSyncError: "Quote amount must be greater than 0 before syncing to QuickBooks." },
+    });
+    revalidateQuotePaths(quote.contactId);
+    return { success: false, error: "Quote amount must be greater than $0.00 before syncing." };
+  }
 
   // 1) Ensure the contact has a QuickBooks customer.
   let customerId = quote.contact.quickBooksCustomerId;
@@ -617,13 +633,67 @@ export async function syncQuoteToQuickBooks(
     },
   });
 
-  void logQuoteActivity(quote.contactId, auth.user.id, "quote.quickbooks_synced", {
+  void logQuoteActivity(quote.contactId, userId, "quote.quickbooks_synced", {
     quoteId: quote.id,
     estimateId,
   });
 
   revalidateQuotePaths(quote.contactId);
   return { success: true, data: { quoteId: quote.id, estimateId } };
+}
+
+export async function syncQuoteToQuickBooks(
+  id: string,
+): Promise<ActionResult<{ quoteId: string; estimateId: string | null }>> {
+  const auth = await requireAuthForAction();
+  if (!auth.success) return auth;
+
+  return syncQuoteToQuickBooksInternal(id, auth.user.id, true);
+}
+
+// ---------------------------------------------------------------------------
+// syncAllQuotesToQuickBooks
+// ---------------------------------------------------------------------------
+
+export async function syncAllQuotesToQuickBooks(): Promise<
+  ActionResult<{ synced: number; failed: number; skipped: number; errors: string[] }>
+> {
+  const auth = await requireAuthForAction();
+  if (!auth.success) return auth;
+
+  if (auth.user.role !== "OWNER") {
+    return { success: false, error: "Only workspace owners can run a full QuickBooks quote sync." };
+  }
+
+  const quoteIds = await db.quote.findMany({
+    where: {},
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
+
+  let synced = 0;
+  let failed = 0;
+  let skipped = 0;
+  const errors: string[] = [];
+
+  for (const quote of quoteIds) {
+    const result = await syncQuoteToQuickBooksInternal(quote.id, auth.user.id, true);
+    if (!result.success) {
+      failed++;
+      if (errors.length < 20) {
+        errors.push(`Quote ${quote.id}: ${result.error}`);
+      }
+      continue;
+    }
+
+    if (result.data.estimateId) synced++;
+    else skipped++;
+  }
+
+  revalidatePath("/quotes");
+  revalidatePath("/dashboard");
+
+  return { success: true, data: { synced, failed, skipped, errors } };
 }
 
 // ---------------------------------------------------------------------------
