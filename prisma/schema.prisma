@@ -317,6 +317,7 @@ model Contact {
   state          String?
   zip            String?
   website        String?
+  quickBooksCustomerId String? @unique
   source         ContactSource @default(OTHER)
   stage          ContactStage  @default(NEW_LEAD)
   type           ContactType   @default(LEAD)
@@ -452,6 +453,9 @@ model Quote {
   title         String
   amount        Decimal?    @db.Decimal(10, 2)
   description   String?     @db.Text
+  quickBooksEstimateId String?
+  quickBooksLastSyncedAt DateTime?
+  quickBooksSyncError String? @db.Text
   status        QuoteStatus @default(DRAFT)
   sentAt        DateTime?
   followUpAt    DateTime?

@@ -17,6 +17,12 @@
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { requireAuthForAction } from "@/lib/session";
+import {
+  QUICKBOOKS_TOKEN_URL,
+  getQuickBooksApiBaseUrl,
+  getQuickBooksBasicAuthHeader,
+  getQuickBooksServerConfig,
+} from "@/lib/quickbooks";
 import { contactFormSchema, updateStageSchema, addNoteSchema } from "@/lib/validations/contacts";
 import type { ActionResult } from "@/types";
 import type { Contact } from "@prisma/client";
@@ -39,6 +45,221 @@ function buildDisplayName(
   if (trimmedBusinessName) return trimmedBusinessName;
 
   return "Unnamed Contact";
+}
+
+type QuickBooksConnectionRecord = {
+  id: string;
+  realmId: string;
+  accessToken: string;
+  refreshToken: string;
+  accessTokenExpiresAt: Date;
+  refreshTokenExpiresAt: Date | null;
+};
+
+type QuickBooksConnectionState =
+  | { success: true; connection: QuickBooksConnectionRecord; environment: "sandbox" | "production" }
+  | { success: true; connection: null; environment: "sandbox" | "production" }
+  | { success: false; error: string };
+
+function parseQuickBooksError(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const fault = (payload as { Fault?: { Error?: Array<{ Message?: string; Detail?: string }> } }).Fault;
+  const errors = fault?.Error;
+  if (!errors || errors.length === 0) return null;
+  const parts = errors
+    .map((entry) => entry.Detail || entry.Message)
+    .filter((value): value is string => Boolean(value?.trim()));
+  return parts.length > 0 ? parts.join(" | ") : null;
+}
+
+async function readResponsePayload(response: Response): Promise<unknown> {
+  const text = await response.text();
+  if (!text) return null;
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return text;
+  }
+}
+
+function buildQuickBooksApiUrl(
+  input: {
+    realmId: string;
+    environment: "sandbox" | "production";
+    path: string;
+  },
+): string {
+  const { realmId, environment, path } = input;
+  const url = new URL(`/v3/company/${realmId}${path}`, getQuickBooksApiBaseUrl(environment));
+  url.searchParams.set("minorversion", "75");
+  return url.toString();
+}
+
+async function refreshQuickBooksConnectionToken(
+  connection: QuickBooksConnectionRecord,
+): Promise<{ success: true; connection: QuickBooksConnectionRecord } | { success: false; error: string }> {
+  const quickBooks = getQuickBooksServerConfig();
+  if (!quickBooks.isConfigured) {
+    return { success: false, error: "QuickBooks is not configured on this server." };
+  }
+
+  const response = await fetch(QUICKBOOKS_TOKEN_URL, {
+    method: "POST",
+    headers: {
+      Authorization: getQuickBooksBasicAuthHeader(quickBooks.clientId, quickBooks.clientSecret),
+      "Content-Type": "application/x-www-form-urlencoded",
+      Accept: "application/json",
+    },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: connection.refreshToken,
+    }),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    return {
+      success: false,
+      error: "QuickBooks token refresh failed. Please reconnect QuickBooks in Settings.",
+    };
+  }
+
+  const payload = await readResponsePayload(response) as {
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+    x_refresh_token_expires_in?: number;
+  };
+
+  if (!payload?.access_token || !payload?.refresh_token || !payload?.expires_in) {
+    return { success: false, error: "QuickBooks token refresh returned an invalid payload." };
+  }
+
+  const updated = await db.quickBooksConnection.update({
+    where: { id: connection.id },
+    data: {
+      accessToken: payload.access_token,
+      refreshToken: payload.refresh_token,
+      accessTokenExpiresAt: new Date(Date.now() + payload.expires_in * 1000),
+      refreshTokenExpiresAt: typeof payload.x_refresh_token_expires_in === "number"
+        ? new Date(Date.now() + payload.x_refresh_token_expires_in * 1000)
+        : connection.refreshTokenExpiresAt,
+    },
+    select: {
+      id: true,
+      realmId: true,
+      accessToken: true,
+      refreshToken: true,
+      accessTokenExpiresAt: true,
+      refreshTokenExpiresAt: true,
+    },
+  });
+
+  return { success: true, connection: updated };
+}
+
+async function getFreshQuickBooksConnection(): Promise<QuickBooksConnectionState> {
+  const quickBooks = getQuickBooksServerConfig();
+  if (!quickBooks.isConfigured) {
+    return { success: true, connection: null, environment: quickBooks.environment };
+  }
+
+  const connection = await db.quickBooksConnection.findFirst({
+    select: {
+      id: true,
+      realmId: true,
+      accessToken: true,
+      refreshToken: true,
+      accessTokenExpiresAt: true,
+      refreshTokenExpiresAt: true,
+    },
+  });
+
+  if (!connection) {
+    // QuickBooks is configured but no workspace connection exists yet.
+    return { success: true, connection: null, environment: quickBooks.environment };
+  }
+
+  if (connection.accessTokenExpiresAt.getTime() - Date.now() <= 60_000) {
+    const refreshed = await refreshQuickBooksConnectionToken(connection);
+    if (!refreshed.success) return refreshed;
+    return { success: true, connection: refreshed.connection, environment: quickBooks.environment };
+  }
+
+  return { success: true, connection, environment: quickBooks.environment };
+}
+
+async function createQuickBooksCustomer(input: {
+  connection: QuickBooksConnectionRecord;
+  environment: "sandbox" | "production";
+  displayName: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+  addressLine1?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+}): Promise<{ success: true; customerId: string } | { success: false; error: string }> {
+  const {
+    connection,
+    environment,
+    displayName,
+    firstName,
+    lastName,
+    email,
+    phone,
+    addressLine1,
+    city,
+    state,
+    zip,
+  } = input;
+
+  const payload: Record<string, unknown> = {
+    DisplayName: displayName,
+  };
+
+  if (firstName) payload.GivenName = firstName;
+  if (lastName) payload.FamilyName = lastName;
+  if (email) payload.PrimaryEmailAddr = { Address: email };
+  if (phone) payload.PrimaryPhone = { FreeFormNumber: phone };
+
+  const billAddress: Record<string, string> = {};
+  if (addressLine1) billAddress.Line1 = addressLine1;
+  if (city) billAddress.City = city;
+  if (state) billAddress.CountrySubDivisionCode = state;
+  if (zip) billAddress.PostalCode = zip;
+  if (Object.keys(billAddress).length > 0) payload.BillAddr = billAddress;
+
+  const response = await fetch(
+    buildQuickBooksApiUrl({
+      realmId: connection.realmId,
+      environment,
+      path: "/customer",
+    }),
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${connection.accessToken}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(payload),
+      cache: "no-store",
+    },
+  );
+
+  const responseData = await readResponsePayload(response) as {
+    Customer?: { Id?: string };
+  };
+
+  if (!response.ok || !responseData?.Customer?.Id) {
+    const apiError = parseQuickBooksError(responseData) ?? "Failed to create customer in QuickBooks.";
+    return { success: false, error: apiError };
+  }
+
+  return { success: true, customerId: responseData.Customer.Id };
 }
 
 /** Logs an activity entry for a contact event. Swallows errors — activity logging
@@ -83,14 +304,49 @@ export async function createContact(input: unknown): Promise<ActionResult<Contac
   }
 
   const data = validated.data;
+  const displayName = buildDisplayName(data.firstName, data.lastName, data.businessName);
 
   try {
+    let quickBooksCustomerId: string | undefined;
+
+    // If QuickBooks is connected, create the customer there first so we can
+    // store the linked QuickBooks customer ID directly on the new contact.
+    const quickBooksConnection = await getFreshQuickBooksConnection();
+    if (!quickBooksConnection.success) {
+      return { success: false, error: quickBooksConnection.error };
+    }
+
+    if (quickBooksConnection.connection) {
+      const quickBooksCustomer = await createQuickBooksCustomer({
+        connection: quickBooksConnection.connection,
+        environment: quickBooksConnection.environment,
+        displayName,
+        firstName: data.firstName || undefined,
+        lastName: data.lastName || undefined,
+        email: data.email,
+        phone: data.phone,
+        addressLine1: data.addressLine1,
+        city: data.city,
+        state: data.state,
+        zip: data.zip,
+      });
+
+      if (!quickBooksCustomer.success) {
+        return {
+          success: false,
+          error: `Contact was not saved because QuickBooks customer creation failed: ${quickBooksCustomer.error}`,
+        };
+      }
+
+      quickBooksCustomerId = quickBooksCustomer.customerId;
+    }
+
     const contact = await db.contact.create({
       data: {
         firstName: data.firstName,
         lastName: data.lastName,
         businessName: data.businessName,
-        displayName: buildDisplayName(data.firstName, data.lastName, data.businessName),
+        displayName,
         email: data.email,
         phone: data.phone,
         altPhone: data.altPhone,
@@ -100,6 +356,7 @@ export async function createContact(input: unknown): Promise<ActionResult<Contac
         state: data.state,
         zip: data.zip,
         website: data.website,
+        quickBooksCustomerId,
         source: data.source,
         stage: data.stage,
         type: data.type,

@@ -21,11 +21,11 @@
 import { useTransition } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { MoreHorizontal, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { MoreHorizontal, Trash2, ChevronLeft, ChevronRight, RefreshCw, Link2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn, formatDate, formatCurrency } from "@/lib/utils";
 import { QUOTE_STATUS_COLORS } from "@/lib/constants";
-import { updateQuoteStatus, deleteQuote } from "@/server/actions/quotes";
+import { updateQuoteStatus, deleteQuote, syncQuoteToQuickBooks } from "@/server/actions/quotes";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -58,6 +58,7 @@ interface QuotesListProps {
   totalPages: number;
   filters: QuoteFiltersInput;
   userRole: UserRole;
+  quickBooksEnabled: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -118,11 +119,21 @@ function QuoteStatusSelect({ quoteId, status }: { quoteId: string; status: strin
 function QuoteRowActions({
   quoteId,
   userRole,
+  quickBooksEnabled,
 }: {
   quoteId: string;
   userRole: UserRole;
+  quickBooksEnabled: boolean;
 }) {
   const [isPending, startTransition] = useTransition();
+
+  function handleSync() {
+    startTransition(async () => {
+      const result = await syncQuoteToQuickBooks(quoteId);
+      if (!result.success) toast.error(result.error);
+      else toast.success("Quote synced to QuickBooks.");
+    });
+  }
 
   function handleDelete() {
     if (!confirm("Delete this quote? This cannot be undone.")) return;
@@ -133,7 +144,7 @@ function QuoteRowActions({
     });
   }
 
-  if (userRole !== "OWNER") return null;
+  if (!quickBooksEnabled && userRole !== "OWNER") return null;
 
   return (
     <DropdownMenu>
@@ -148,14 +159,25 @@ function QuoteRowActions({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          className="text-destructive focus:text-destructive"
-          onSelect={handleDelete}
-        >
-          <Trash2 className="mr-2 h-4 w-4" />
-          Delete quote
-        </DropdownMenuItem>
+        {quickBooksEnabled && (
+          <DropdownMenuItem onSelect={handleSync}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Sync to QuickBooks
+          </DropdownMenuItem>
+        )}
+
+        {userRole === "OWNER" && (
+          <>
+            {quickBooksEnabled && <DropdownMenuSeparator />}
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onSelect={handleDelete}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete quote
+            </DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -173,6 +195,7 @@ export function QuotesList({
   totalPages,
   filters,
   userRole,
+  quickBooksEnabled,
 }: QuotesListProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -229,6 +252,17 @@ export function QuotesList({
                             {quote.description}
                           </p>
                         )}
+                        {quote.quickBooksEstimateId && (
+                          <p className="mt-1 inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                            <Link2 className="h-3 w-3" />
+                            Synced to QuickBooks
+                          </p>
+                        )}
+                        {!quote.quickBooksEstimateId && quote.quickBooksSyncError && (
+                          <p className="mt-1 text-[11px] text-destructive truncate max-w-[240px]">
+                            QuickBooks sync failed: {quote.quickBooksSyncError}
+                          </p>
+                        )}
                       </td>
 
                       {/* Contact */}
@@ -274,7 +308,11 @@ export function QuotesList({
 
                       {/* Row actions */}
                       <td className="px-2 py-3 text-right">
-                        <QuoteRowActions quoteId={quote.id} userRole={userRole} />
+                        <QuoteRowActions
+                          quoteId={quote.id}
+                          userRole={userRole}
+                          quickBooksEnabled={quickBooksEnabled}
+                        />
                       </td>
                     </tr>
                   );

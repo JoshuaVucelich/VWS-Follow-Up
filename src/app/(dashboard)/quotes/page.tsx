@@ -21,6 +21,8 @@ import { QuotesFilters } from "@/features/quotes/components/quotes-filters";
 import { getQuotes } from "@/server/queries/quotes";
 import { getContactsForPicker } from "@/server/queries/contacts";
 import { getCurrentUser } from "@/lib/session";
+import { db } from "@/lib/db";
+import { getQuickBooksServerConfig } from "@/lib/quickbooks";
 import { quoteFiltersSchema } from "@/lib/validations/quotes";
 
 export const metadata: Metadata = {
@@ -32,6 +34,8 @@ interface QuotesPageProps {
 }
 
 export default async function QuotesPage({ searchParams }: QuotesPageProps) {
+  const quickBooksConfig = getQuickBooksServerConfig();
+
   const rawParams = Object.fromEntries(
     Object.entries(searchParams).map(([k, v]) => [k, Array.isArray(v) ? v[0] : v])
   );
@@ -39,11 +43,12 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
   const parsedFilters = quoteFiltersSchema.safeParse(rawParams);
   const filters = parsedFilters.success ? parsedFilters.data : quoteFiltersSchema.parse({});
 
-  const [{ data: quotes, total, page, perPage, totalPages }, contacts, currentUser] =
+  const [{ data: quotes, total, page, perPage, totalPages }, contacts, currentUser, quickBooksConnection] =
     await Promise.all([
       getQuotes(filters),
       getContactsForPicker(),
       getCurrentUser(),
+      db.quickBooksConnection.findFirst({ select: { id: true } }),
     ]);
 
   return (
@@ -74,6 +79,7 @@ export default async function QuotesPage({ searchParams }: QuotesPageProps) {
           totalPages={totalPages}
           filters={filters}
           userRole={currentUser.role}
+          quickBooksEnabled={Boolean(quickBooksConnection) && quickBooksConfig.isConfigured}
         />
       </Suspense>
     </div>

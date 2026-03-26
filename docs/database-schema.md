@@ -88,6 +88,7 @@ The central record. Represents both leads and customers.
 | addressLine1-2 | String? | |
 | city, state, zip | String? | |
 | website | String? | |
+| quickBooksCustomerId | String? | Linked QuickBooks customer ID |
 | source | ContactSource | Where the lead came from |
 | stage | ContactStage | Current pipeline position |
 | type | ContactType | LEAD or CUSTOMER |
@@ -166,6 +167,9 @@ Lightweight estimate status tracking.
 | title | String | |
 | amount | Decimal? | Optional dollar amount |
 | description | Text? | |
+| quickBooksEstimateId | String? | Linked QuickBooks estimate ID |
+| quickBooksLastSyncedAt | DateTime? | Last successful QuickBooks sync |
+| quickBooksSyncError | Text? | Last QuickBooks sync error, if any |
 | status | QuoteStatus | DRAFT through EXPIRED |
 | sentAt | DateTime? | When the quote was sent |
 | followUpAt | DateTime? | Drives "quotes awaiting" dashboard widget |

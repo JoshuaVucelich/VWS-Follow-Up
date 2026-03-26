@@ -23,6 +23,9 @@ export type QuoteWithRelations = {
   status: import("@prisma/client").QuoteStatus;
   amount: { toString(): string } | null;
   description: string | null;
+  quickBooksEstimateId: string | null;
+  quickBooksLastSyncedAt: Date | null;
+  quickBooksSyncError: string | null;
   sentAt: Date | null;
   followUpAt: Date | null;
   acceptedAt: Date | null;
@@ -76,6 +79,9 @@ export async function getQuotes(filters: QuoteFiltersInput): Promise<{
         status: true,
         amount: true,
         description: true,
+        quickBooksEstimateId: true,
+        quickBooksLastSyncedAt: true,
+        quickBooksSyncError: true,
         sentAt: true,
         followUpAt: true,
         acceptedAt: true,
