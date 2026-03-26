@@ -7,19 +7,21 @@
  * Delegates interactive parts to client sub-components.
  */
 
-import { getAllUsers } from "@/server/queries/users";
+import { getAllUsers, getPendingInvites } from "@/server/queries/users";
 import { getCurrentUser } from "@/lib/session";
 import { TeamMembersSectionClient } from "./team-members-section-client";
 
 export async function TeamMembersSection() {
-  const [users, currentUser] = await Promise.all([
+  const [users, pendingInvites, currentUser] = await Promise.all([
     getAllUsers(),
+    getPendingInvites(),
     getCurrentUser(),
   ]);
 
   return (
     <TeamMembersSectionClient
       users={users}
+      pendingInvites={pendingInvites}
       currentUserId={currentUser.id}
       isOwner={currentUser.role === "OWNER"}
     />

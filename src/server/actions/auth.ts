@@ -25,8 +25,14 @@
 
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
+import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
-import { sendEmail, buildPasswordResetEmail, buildInviteEmail } from "@/lib/email";
+import { requireAuthForAction } from "@/lib/session";
+import {
+  sendEmail,
+  buildPasswordResetEmail,
+  buildInviteEmail,
+} from "@/lib/email";
 import {
   createUserSchema,
   forgotPasswordSchema,
@@ -65,7 +71,7 @@ const INVITE_TOKEN_EXPIRY_SECONDS = 48 * 60 * 60; // 48 hours
  * Called by: RegisterForm, acceptInvite
  */
 export async function createUser(
-  input: unknown
+  input: unknown,
 ): Promise<ActionResult<Pick<User, "id" | "name" | "email" | "role">>> {
   // Validate input
   const validated = createUserSchema.safeParse(input);
@@ -73,7 +79,10 @@ export async function createUser(
     return {
       success: false,
       error: "Invalid input",
-      fieldErrors: validated.error.flatten().fieldErrors as Record<string, string[]>,
+      fieldErrors: validated.error.flatten().fieldErrors as Record<
+        string,
+        string[]
+      >,
     };
   }
 
@@ -140,7 +149,7 @@ export async function createUser(
  * Called by: ForgotPasswordForm
  */
 export async function requestPasswordReset(
-  input: unknown
+  input: unknown,
 ): Promise<ActionResult<{ emailSent: boolean }>> {
   const validated = forgotPasswordSchema.safeParse(input);
   if (!validated.success) {
@@ -212,13 +221,18 @@ export async function requestPasswordReset(
  *
  * Called by: ResetPasswordForm
  */
-export async function resetPassword(input: unknown): Promise<ActionResult<undefined>> {
+export async function resetPassword(
+  input: unknown,
+): Promise<ActionResult<undefined>> {
   const validated = resetPasswordSchema.safeParse(input);
   if (!validated.success) {
     return {
       success: false,
       error: "Invalid input",
-      fieldErrors: validated.error.flatten().fieldErrors as Record<string, string[]>,
+      fieldErrors: validated.error.flatten().fieldErrors as Record<
+        string,
+        string[]
+      >,
     };
   }
 
@@ -229,7 +243,10 @@ export async function resetPassword(input: unknown): Promise<ActionResult<undefi
   const email = inputWithEmail.email;
 
   if (!email) {
-    return { success: false, error: "Invalid reset link. Please request a new one." };
+    return {
+      success: false,
+      error: "Invalid reset link. Please request a new one.",
+    };
   }
 
   try {
@@ -249,7 +266,8 @@ export async function resetPassword(input: unknown): Promise<ActionResult<undefi
     if (!tokenRecord) {
       return {
         success: false,
-        error: "Invalid or expired reset link. Please request a new password reset.",
+        error:
+          "Invalid or expired reset link. Please request a new password reset.",
       };
     }
 
@@ -317,14 +335,17 @@ export async function resetPassword(input: unknown): Promise<ActionResult<undefi
  */
 export async function changePassword(
   userId: string,
-  input: unknown
+  input: unknown,
 ): Promise<ActionResult<undefined>> {
   const validated = changePasswordSchema.safeParse(input);
   if (!validated.success) {
     return {
       success: false,
       error: "Invalid input",
-      fieldErrors: validated.error.flatten().fieldErrors as Record<string, string[]>,
+      fieldErrors: validated.error.flatten().fieldErrors as Record<
+        string,
+        string[]
+      >,
     };
   }
 
@@ -342,7 +363,10 @@ export async function changePassword(
     }
 
     // Verify current password
-    const passwordMatch = await bcrypt.compare(currentPassword, user.passwordHash);
+    const passwordMatch = await bcrypt.compare(
+      currentPassword,
+      user.passwordHash,
+    );
     if (!passwordMatch) {
       return {
         success: false,
@@ -380,26 +404,32 @@ export async function changePassword(
  */
 export async function inviteUser(
   inviterId: string,
-  email: string
-): Promise<ActionResult<undefined>> {
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  email: string,
+): Promise<ActionResult<{ email: string; expiresAt: Date }>> {
+  const normalizedEmail = email.trim().toLowerCase();
+
+  if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
     return { success: false, error: "Please enter a valid email address." };
   }
 
   try {
-    // Check inviter is an owner
-    const inviter = await db.user.findUnique({
-      where: { id: inviterId },
-      select: { name: true, role: true },
-    });
+    const auth = await requireAuthForAction();
+    if (!auth.success) return auth;
 
-    if (!inviter || inviter.role !== "OWNER") {
-      return { success: false, error: "Only workspace owners can invite users." };
+    if (auth.user.id !== inviterId) {
+      return { success: false, error: "Unauthorized invite request." };
+    }
+
+    if (auth.user.role !== "OWNER") {
+      return {
+        success: false,
+        error: "Only workspace owners can invite users.",
+      };
     }
 
     // Check if this email is already registered
     const existing = await db.user.findUnique({
-      where: { email },
+      where: { email: normalizedEmail },
       select: { id: true },
     });
 
@@ -412,7 +442,7 @@ export async function inviteUser(
 
     // Clean up any prior invite for this email
     await db.verificationToken.deleteMany({
-      where: { identifier: `invite:${email}` },
+      where: { identifier: `invite:${normalizedEmail}` },
     });
 
     // Generate invite token
@@ -422,7 +452,7 @@ export async function inviteUser(
 
     await db.verificationToken.create({
       data: {
-        identifier: `invite:${email}`,
+        identifier: `invite:${normalizedEmail}`,
         token: hashedToken,
         expires,
       },
@@ -430,17 +460,22 @@ export async function inviteUser(
 
     // Build invite URL and send email
     const appUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
-    const inviteUrl = `${appUrl}/register?invite=${token}&email=${encodeURIComponent(email)}`;
+    const inviteUrl = `${appUrl}/register?invite=${token}&email=${encodeURIComponent(normalizedEmail)}`;
 
-    const emailContent = buildInviteEmail(inviteUrl, inviter.name);
+    const emailContent = buildInviteEmail(inviteUrl, auth.user.name);
     await sendEmail({
-      to: email,
+      to: normalizedEmail,
       subject: emailContent.subject,
       text: emailContent.text,
       html: emailContent.html,
     });
 
-    return { success: true, data: undefined };
+    revalidatePath("/settings");
+
+    return {
+      success: true,
+      data: { email: normalizedEmail, expiresAt: expires },
+    };
   } catch (error) {
     console.error("[inviteUser] Error:", error);
     return { success: false, error: "Something went wrong. Please try again." };
@@ -459,7 +494,7 @@ export async function inviteUser(
 export async function acceptInvite(
   token: string,
   email: string,
-  input: unknown
+  input: unknown,
 ): Promise<ActionResult<Pick<User, "id" | "name" | "email" | "role">>> {
   if (!token || !email) {
     return { success: false, error: "Invalid invitation link." };
@@ -488,7 +523,10 @@ export async function acceptInvite(
     if (tokenRecord.expires < new Date()) {
       await db.verificationToken.delete({
         where: {
-          identifier_token: { identifier: `invite:${email}`, token: hashedToken },
+          identifier_token: {
+            identifier: `invite:${email}`,
+            token: hashedToken,
+          },
         },
       });
       return {
@@ -498,12 +536,18 @@ export async function acceptInvite(
     }
 
     // Create the user as STAFF (invites always create staff, not owners)
-    const validated = createUserSchema.safeParse({ ...( input as object), email });
+    const validated = createUserSchema.safeParse({
+      ...(input as object),
+      email,
+    });
     if (!validated.success) {
       return {
         success: false,
         error: "Invalid input",
-        fieldErrors: validated.error.flatten().fieldErrors as Record<string, string[]>,
+        fieldErrors: validated.error.flatten().fieldErrors as Record<
+          string,
+          string[]
+        >,
       };
     }
 

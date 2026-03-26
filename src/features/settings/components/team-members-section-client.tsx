@@ -10,13 +10,20 @@
 
 "use client";
 
-import { useTransition, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import { inviteUserSchema, type InviteUserInput } from "@/lib/validations/settings";
+import {
+  inviteUserSchema,
+  type InviteUserInput,
+} from "@/lib/validations/settings";
 import { inviteUser } from "@/server/actions/auth";
-import { changeUserRole, deactivateUser, reactivateUser } from "@/server/actions/settings";
+import {
+  changeUserRole,
+  deactivateUser,
+  reactivateUser,
+} from "@/server/actions/settings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -36,8 +43,14 @@ interface TeamUser {
   createdAt: Date;
 }
 
+interface PendingInvite {
+  email: string;
+  expiresAt: Date;
+}
+
 interface TeamMembersSectionClientProps {
   users: TeamUser[];
+  pendingInvites: PendingInvite[];
   currentUserId: string;
   isOwner: boolean;
 }
@@ -60,7 +73,8 @@ function UserRow({
 
   function handleRoleToggle() {
     const newRole = user.role === "OWNER" ? "STAFF" : "OWNER";
-    if (!confirm(`Change ${user.name ?? user.email}'s role to ${newRole}?`)) return;
+    if (!confirm(`Change ${user.name ?? user.email}'s role to ${newRole}?`))
+      return;
     startTransition(async () => {
       const result = await changeUserRole(user.id, newRole);
       if (!result.success) toast.error(result.error);
@@ -69,7 +83,12 @@ function UserRow({
   }
 
   function handleDeactivate() {
-    if (!confirm(`Deactivate ${user.name ?? user.email}? They will no longer be able to log in.`)) return;
+    if (
+      !confirm(
+        `Deactivate ${user.name ?? user.email}? They will no longer be able to log in.`,
+      )
+    )
+      return;
     startTransition(async () => {
       const result = await deactivateUser(user.id);
       if (!result.success) toast.error(result.error);
@@ -89,7 +108,7 @@ function UserRow({
     <div
       className={cn(
         "flex items-center justify-between gap-4 rounded-lg border border-border p-3",
-        !user.isActive && "opacity-60"
+        !user.isActive && "opacity-60",
       )}
     >
       {/* Avatar + info */}
@@ -115,7 +134,7 @@ function UserRow({
             "text-xs rounded-full px-2 py-0.5 font-semibold",
             user.role === "OWNER"
               ? "bg-primary/10 text-primary"
-              : "bg-muted text-muted-foreground"
+              : "bg-muted text-muted-foreground",
           )}
         >
           {user.role === "OWNER" ? "Owner" : "Staff"}
@@ -173,15 +192,39 @@ function UserRow({
 
 export function TeamMembersSectionClient({
   users,
+  pendingInvites,
   currentUserId,
   isOwner,
 }: TeamMembersSectionClientProps) {
   const [invitePending, startInviteTransition] = useTransition();
+  const [resendPending, startResendTransition] = useTransition();
   const [inviteSent, setInviteSent] = useState(false);
+  const [resendPendingEmail, setResendPendingEmail] = useState<string | null>(
+    null,
+  );
+  const [pendingInviteList, setPendingInviteList] =
+    useState<PendingInvite[]>(pendingInvites);
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<InviteUserInput>({
+  useEffect(() => {
+    setPendingInviteList(pendingInvites);
+  }, [pendingInvites]);
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<InviteUserInput>({
     resolver: zodResolver(inviteUserSchema),
   });
+
+  function upsertPendingInvite(email: string, expiresAt: Date) {
+    setPendingInviteList((previous) => {
+      const next = previous.filter((invite) => invite.email !== email);
+      next.push({ email, expiresAt });
+      return next.sort((a, b) => a.email.localeCompare(b.email));
+    });
+  }
 
   function onInvite(data: InviteUserInput) {
     startInviteTransition(async () => {
@@ -190,9 +233,39 @@ export function TeamMembersSectionClient({
         toast.error(result.error);
       } else {
         toast.success(`Invitation sent to ${data.email}`);
+        upsertPendingInvite(result.data.email, new Date(result.data.expiresAt));
         reset();
         setInviteSent(true);
         setTimeout(() => setInviteSent(false), 4000);
+      }
+    });
+  }
+
+  function formatInviteExpiry(expiresAt: Date) {
+    return new Date(expiresAt).toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  }
+
+  function handleResendInvite(email: string) {
+    setResendPendingEmail(email);
+
+    startResendTransition(async () => {
+      try {
+        const result = await inviteUser(currentUserId, email);
+        if (!result.success) {
+          toast.error(result.error);
+          return;
+        }
+
+        upsertPendingInvite(result.data.email, new Date(result.data.expiresAt));
+        toast.success(`New invite link sent to ${email}`);
+      } finally {
+        setResendPendingEmail(null);
       }
     });
   }
@@ -213,36 +286,104 @@ export function TeamMembersSectionClient({
 
       {/* Invite form — owner only */}
       {isOwner && (
-        <div className="rounded-lg border border-dashed border-border p-4 space-y-3">
-          <div>
-            <h3 className="text-sm font-semibold">Invite team member</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              They will receive an email to create their account.
-            </p>
-          </div>
-          <form onSubmit={handleSubmit(onInvite)} className="flex gap-2">
-            <div className="flex-1 space-y-1">
-              <Label htmlFor="invite-email" className="sr-only">
-                Email address
-              </Label>
-              <Input
-                id="invite-email"
-                type="email"
-                placeholder="colleague@example.com"
-                {...register("email")}
-              />
-              {errors.email && (
-                <p className="text-xs text-destructive">{errors.email.message}</p>
-              )}
+        <>
+          <div className="rounded-lg border border-dashed border-border p-4 space-y-3">
+            <div>
+              <h3 className="text-sm font-semibold">Invite team member</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                They will receive an email to create their account.
+              </p>
             </div>
-            <Button type="submit" disabled={invitePending} className="flex-shrink-0">
-              {invitePending ? "Sending…" : "Send invite"}
-            </Button>
-          </form>
-          {inviteSent && (
-            <p className="text-xs text-green-600">Invitation sent successfully!</p>
-          )}
-        </div>
+            <form onSubmit={handleSubmit(onInvite)} className="flex gap-2">
+              <div className="flex-1 space-y-1">
+                <Label htmlFor="invite-email" className="sr-only">
+                  Email address
+                </Label>
+                <Input
+                  id="invite-email"
+                  type="email"
+                  placeholder="colleague@example.com"
+                  {...register("email")}
+                />
+                {errors.email && (
+                  <p className="text-xs text-destructive">
+                    {errors.email.message}
+                  </p>
+                )}
+              </div>
+              <Button
+                type="submit"
+                disabled={invitePending}
+                className="flex-shrink-0"
+              >
+                {invitePending ? "Sending…" : "Send invite"}
+              </Button>
+            </form>
+            {inviteSent && (
+              <p className="text-xs text-green-600">
+                Invitation sent successfully!
+              </p>
+            )}
+          </div>
+
+          <div className="rounded-lg border border-border p-4 space-y-3">
+            <div>
+              <h3 className="text-sm font-semibold">Pending invites</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Resend a fresh invite link if a previous one expired.
+              </p>
+            </div>
+
+            {pendingInviteList.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                No pending invites right now.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {pendingInviteList.map((invite) => {
+                  const isExpired =
+                    new Date(invite.expiresAt).getTime() < Date.now();
+                  const isResending =
+                    resendPending && resendPendingEmail === invite.email;
+
+                  return (
+                    <div
+                      key={invite.email}
+                      className="flex items-center justify-between gap-3 rounded-lg border border-border p-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">
+                          {invite.email}
+                        </p>
+                        <p
+                          className={cn(
+                            "text-xs",
+                            isExpired
+                              ? "text-amber-600"
+                              : "text-muted-foreground",
+                          )}
+                        >
+                          {isExpired ? "Expired" : "Expires"}{" "}
+                          {formatInviteExpiry(invite.expiresAt)}
+                        </p>
+                      </div>
+
+                      <Button
+                        variant={isExpired ? "default" : "ghost"}
+                        size="sm"
+                        className="h-7 text-xs flex-shrink-0"
+                        onClick={() => handleResendInvite(invite.email)}
+                        disabled={resendPending}
+                      >
+                        {isResending ? "Resending…" : "Resend link"}
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       {!isOwner && (
