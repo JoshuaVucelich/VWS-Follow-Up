@@ -40,7 +40,7 @@ const PROTECTED_PREFIXES = [
  * Auth routes that authenticated users should be bounced away from.
  * (No point showing the login page to someone already signed in.)
  */
-const AUTH_ROUTES = ["/login", "/forgot-password", "/reset-password"];
+const AUTH_ROUTES = ["/login", "/forgot-password"];
 
 export default auth((req: NextRequest & { auth: unknown }) => {
   const { pathname, searchParams } = req.nextUrl;

@@ -20,7 +20,8 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { Eye, EyeOff, Loader2, CheckCircle } from "lucide-react";
+import { signOut } from "next-auth/react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -84,6 +85,10 @@ export function ResetPasswordForm({ token, email }: ResetPasswordFormProps) {
       setServerError(result.error);
       return;
     }
+
+    // Make sure no active session remains after a password reset.
+    // Users must sign in again with their updated credentials.
+    await signOut({ redirect: false });
 
     // Success — notify and redirect to login
     toast.success("Password updated! Please sign in with your new password.");
