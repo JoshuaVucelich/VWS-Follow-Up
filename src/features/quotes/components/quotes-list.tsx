@@ -152,7 +152,7 @@ function QuoteRowActions({
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7 opacity-0 group-hover/row:opacity-100 transition-opacity"
+          className="h-9 w-9 md:opacity-0 md:group-hover/row:opacity-100 transition-opacity"
           disabled={isPending}
         >
           <MoreHorizontal className="h-4 w-4" />
@@ -219,8 +219,60 @@ export function QuotesList({
         </div>
       ) : (
         <>
-          {/* Table */}
-          <div className="overflow-x-auto">
+          {/* Mobile card layout */}
+          <div className="md:hidden divide-y divide-border">
+            {quotes.map((quote) => (
+              <div key={quote.id} className="px-4 py-3">
+                <div className="flex items-start gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium leading-snug">{quote.title}</p>
+                    {quote.description && (
+                      <p className="text-xs text-muted-foreground truncate mt-0.5">
+                        {quote.description}
+                      </p>
+                    )}
+                    {quote.contact && (
+                      <Link
+                        href={`/contacts/${quote.contact.id}`}
+                        className="text-xs text-muted-foreground hover:text-primary transition-colors block mt-1"
+                      >
+                        {quote.contact.displayName}
+                      </Link>
+                    )}
+                    <div className="flex items-center gap-2 mt-2 flex-wrap">
+                      <QuoteStatusSelect quoteId={quote.id} status={quote.status} />
+                      {quote.amount != null && (
+                        <span className="text-sm font-semibold">
+                          {formatCurrency(quote.amount.toString())}
+                        </span>
+                      )}
+                    </div>
+                    {quote.quickBooksEstimateId && (
+                      <p className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                        <Link2 className="h-3 w-3" />
+                        Synced to QuickBooks
+                      </p>
+                    )}
+                    {!quote.quickBooksEstimateId && quote.quickBooksSyncError && (
+                      <p className="mt-1.5 text-[11px] text-destructive truncate">
+                        QuickBooks sync failed: {quote.quickBooksSyncError}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex-shrink-0">
+                    <QuoteRowActions
+                      quoteId={quote.id}
+                      userRole={userRole}
+                      quickBooksEnabled={quickBooksEnabled}
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/40 text-xs text-muted-foreground">
@@ -322,7 +374,7 @@ export function QuotesList({
           </div>
 
           {/* Pagination footer */}
-          <div className="flex items-center justify-between border-t border-border px-4 py-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-t border-border px-4 py-3">
             <p className="text-xs text-muted-foreground">
               {start}–{end} of {total} quote{total !== 1 ? "s" : ""}
             </p>

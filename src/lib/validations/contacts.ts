@@ -10,6 +10,7 @@
 
 import { z } from "zod";
 import { ContactSource, ContactStage, ContactType } from "@prisma/client";
+import { optionalEmailField } from "./shared";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -78,13 +79,7 @@ export const contactFormSchema = z.object({
     .or(z.literal(""))
     .transform((v) => v ?? ""),
   businessName: optStr(200),
-  email: z
-    .string()
-    .trim()
-    .optional()
-    .or(z.literal(""))
-    .refine((v) => !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), "Invalid email address")
-    .transform((v) => v || undefined),
+  email: optionalEmailField,
   phone: optStr(30),
   altPhone: optStr(30),
   addressLine1: optStr(200),
@@ -93,6 +88,10 @@ export const contactFormSchema = z.object({
   state: optStr(100),
   zip: optStr(20),
   website: optUrl,
+  linkedinUrl: optUrl,
+  facebookUrl: optUrl,
+  instagramUrl: optUrl,
+  twitterUrl: optUrl,
   source: z.nativeEnum(ContactSource).default("OTHER"),
   stage: z.nativeEnum(ContactStage).default("NEW_LEAD"),
   type: z.nativeEnum(ContactType).default("LEAD"),

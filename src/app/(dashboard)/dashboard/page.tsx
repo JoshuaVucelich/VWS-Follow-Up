@@ -26,12 +26,20 @@ import { RecentContacts } from "@/features/dashboard/components/recent-contacts"
 import { OverdueFollowUps } from "@/features/dashboard/components/overdue-follow-ups";
 import { QuotesPendingResponse } from "@/features/dashboard/components/quotes-pending-response";
 import { QuickActions } from "@/features/dashboard/components/quick-actions";
+import { SocialMediaLinks } from "@/features/dashboard/components/social-media-links";
+import { getActiveUsers } from "@/server/queries/users";
+import { getContactsForPicker } from "@/server/queries/contacts";
 
 export const metadata: Metadata = {
   title: "Dashboard",
 };
 
 export default async function DashboardPage() {
+  const [users, contacts] = await Promise.all([
+    getActiveUsers(),
+    getContactsForPicker(),
+  ]);
+
   return (
     <div className="space-y-6">
       {/* Page header */}
@@ -44,7 +52,7 @@ export default async function DashboardPage() {
         </div>
 
         {/* Quick action buttons */}
-        <QuickActions />
+        <QuickActions users={users} contacts={contacts} />
       </div>
 
       {/* Summary stat cards */}
@@ -67,6 +75,9 @@ export default async function DashboardPage() {
 
       {/* Full-width bottom section */}
       <RecentContacts />
+
+      {/* Social media quick links */}
+      <SocialMediaLinks />
     </div>
   );
 }

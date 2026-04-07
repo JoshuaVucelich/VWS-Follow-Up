@@ -21,6 +21,7 @@ import {
   appointmentFormSchema,
   updateAppointmentStatusSchema,
 } from "@/lib/validations/appointments";
+import { logActivity } from "@/server/lib/activity-logger";
 import type { ActionResult } from "@/types";
 import type { Appointment } from "@prisma/client";
 
@@ -28,26 +29,13 @@ import type { Appointment } from "@prisma/client";
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function logAppointmentActivity(
+function logAppointmentActivity(
   contactId: string | null | undefined,
   userId: string | undefined,
   action: string,
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown>,
 ) {
-  if (!contactId) return;
-  try {
-    await db.activity.create({
-      data: {
-        contactId,
-        userId,
-        entityType: "appointment",
-        action,
-        metadata: metadata ? JSON.parse(JSON.stringify(metadata)) : null,
-      },
-    });
-  } catch {
-    // Fire-and-forget
-  }
+  void logActivity({ contactId, userId, entityType: "appointment", action, metadata });
 }
 
 function revalidateAppointmentPaths(contactId?: string) {
@@ -77,23 +65,28 @@ export async function createAppointment(
 
   const { contactId, ...rest } = validated.data;
 
-  const appointment = await db.appointment.create({
-    data: {
-      ...rest,
-      contactId,
-    },
-  });
+  try {
+    const appointment = await db.appointment.create({
+      data: {
+        ...rest,
+        contactId,
+      },
+    });
 
-  void logAppointmentActivity(contactId, auth.user.id, "appointment.created", {
-    appointmentId: appointment.id,
-    title: appointment.title,
-    type: appointment.type,
-    startAt: appointment.startAt.toISOString(),
-  });
+    logAppointmentActivity(contactId, auth.user.id, "appointment.created", {
+      appointmentId: appointment.id,
+      title: appointment.title,
+      type: appointment.type,
+      startAt: appointment.startAt.toISOString(),
+    });
 
-  revalidateAppointmentPaths(contactId);
+    revalidateAppointmentPaths(contactId);
 
-  return { success: true, data: appointment };
+    return { success: true, data: appointment };
+  } catch (error) {
+    console.error("[createAppointment]", error);
+    return { success: false, error: "Failed to create appointment. Please try again." };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -118,14 +111,19 @@ export async function updateAppointment(
 
   const { contactId, ...rest } = validated.data;
 
-  const appointment = await db.appointment.update({
-    where: { id },
-    data: { ...rest },
-  });
+  try {
+    const appointment = await db.appointment.update({
+      where: { id },
+      data: { ...rest },
+    });
 
-  revalidateAppointmentPaths(appointment.contactId);
+    revalidateAppointmentPaths(appointment.contactId);
 
-  return { success: true, data: appointment };
+    return { success: true, data: appointment };
+  } catch (error) {
+    console.error("[updateAppointment]", error);
+    return { success: false, error: "Failed to update appointment. Please try again." };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -144,21 +142,26 @@ export async function updateAppointmentStatus(
     return { success: false, error: "Invalid status" };
   }
 
-  const appointment = await db.appointment.update({
-    where: { id },
-    data: { status: validated.data.status },
-  });
+  try {
+    const appointment = await db.appointment.update({
+      where: { id },
+      data: { status: validated.data.status },
+    });
 
-  void logAppointmentActivity(
-    appointment.contactId,
-    auth.user.id,
-    "appointment.status_changed",
-    { appointmentId: appointment.id, title: appointment.title, status: validated.data.status }
-  );
+    logAppointmentActivity(
+      appointment.contactId,
+      auth.user.id,
+      "appointment.status_changed",
+      { appointmentId: appointment.id, title: appointment.title, status: validated.data.status },
+    );
 
-  revalidateAppointmentPaths(appointment.contactId);
+    revalidateAppointmentPaths(appointment.contactId);
 
-  return { success: true, data: appointment };
+    return { success: true, data: appointment };
+  } catch (error) {
+    console.error("[updateAppointmentStatus]", error);
+    return { success: false, error: "Failed to update appointment status." };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -175,9 +178,14 @@ export async function deleteAppointment(
     return { success: false, error: "Only owners can delete appointments." };
   }
 
-  const appointment = await db.appointment.delete({ where: { id } });
+  try {
+    const appointment = await db.appointment.delete({ where: { id } });
 
-  revalidateAppointmentPaths(appointment.contactId);
+    revalidateAppointmentPaths(appointment.contactId);
 
-  return { success: true, data: { id: appointment.id } };
+    return { success: true, data: { id: appointment.id } };
+  } catch (error) {
+    console.error("[deleteAppointment]", error);
+    return { success: false, error: "Failed to delete appointment." };
+  }
 }

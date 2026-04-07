@@ -232,6 +232,10 @@ model BusinessSettings {
   logoUrl      String?
   timezone     String   @default("America/New_York")
   primaryColor String?  // Hex color for light branding customization
+  facebookPageUrl  String?
+  instagramUrl     String?
+  twitterUrl       String?
+  linkedinUrl      String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -317,6 +321,10 @@ model Contact {
   state          String?
   zip            String?
   website        String?
+  linkedinUrl    String?
+  facebookUrl    String?
+  instagramUrl   String?
+  twitterUrl     String?
   quickBooksCustomerId String? @unique
   source         ContactSource @default(OTHER)
   stage          ContactStage  @default(NEW_LEAD)

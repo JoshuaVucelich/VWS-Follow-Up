@@ -17,13 +17,16 @@
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { requireAuthForAction } from "@/lib/session";
-import {
-  QUICKBOOKS_TOKEN_URL,
-  getQuickBooksApiBaseUrl,
-  getQuickBooksBasicAuthHeader,
-  getQuickBooksServerConfig,
-} from "@/lib/quickbooks";
+import { QUICKBOOKS_SYNC_MAX_ERRORS } from "@/lib/constants";
 import { contactFormSchema, updateStageSchema, addNoteSchema } from "@/lib/validations/contacts";
+import {
+  type QuickBooksConnectionRecord,
+  parseQuickBooksError,
+  readResponsePayload,
+  buildQuickBooksApiUrl,
+  getFreshQuickBooksConnection,
+} from "@/server/lib/quickbooks-api";
+import { logActivity } from "@/server/lib/activity-logger";
 import type { ActionResult } from "@/types";
 import type { Contact } from "@prisma/client";
 
@@ -45,154 +48,6 @@ function buildDisplayName(
   if (trimmedBusinessName) return trimmedBusinessName;
 
   return "Unnamed Contact";
-}
-
-type QuickBooksConnectionRecord = {
-  id: string;
-  realmId: string;
-  accessToken: string;
-  refreshToken: string;
-  accessTokenExpiresAt: Date;
-  refreshTokenExpiresAt: Date | null;
-};
-
-type QuickBooksConnectionState =
-  | { success: true; connection: QuickBooksConnectionRecord; environment: "sandbox" | "production" }
-  | { success: true; connection: null; environment: "sandbox" | "production" }
-  | { success: false; error: string };
-
-function parseQuickBooksError(payload: unknown): string | null {
-  if (!payload || typeof payload !== "object") return null;
-  const fault = (payload as { Fault?: { Error?: Array<{ Message?: string; Detail?: string }> } }).Fault;
-  const errors = fault?.Error;
-  if (!errors || errors.length === 0) return null;
-  const parts = errors
-    .map((entry) => entry.Detail || entry.Message)
-    .filter((value): value is string => Boolean(value?.trim()));
-  return parts.length > 0 ? parts.join(" | ") : null;
-}
-
-async function readResponsePayload(response: Response): Promise<unknown> {
-  const text = await response.text();
-  if (!text) return null;
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    return text;
-  }
-}
-
-function buildQuickBooksApiUrl(
-  input: {
-    realmId: string;
-    environment: "sandbox" | "production";
-    path: string;
-    queryParams?: Record<string, string>;
-  },
-): string {
-  const { realmId, environment, path, queryParams } = input;
-  const url = new URL(`/v3/company/${realmId}${path}`, getQuickBooksApiBaseUrl(environment));
-  url.searchParams.set("minorversion", "75");
-  if (queryParams) {
-    for (const [key, value] of Object.entries(queryParams)) {
-      url.searchParams.set(key, value);
-    }
-  }
-  return url.toString();
-}
-
-async function refreshQuickBooksConnectionToken(
-  connection: QuickBooksConnectionRecord,
-): Promise<{ success: true; connection: QuickBooksConnectionRecord } | { success: false; error: string }> {
-  const quickBooks = getQuickBooksServerConfig();
-  if (!quickBooks.isConfigured) {
-    return { success: false, error: "QuickBooks is not configured on this server." };
-  }
-
-  const response = await fetch(QUICKBOOKS_TOKEN_URL, {
-    method: "POST",
-    headers: {
-      Authorization: getQuickBooksBasicAuthHeader(quickBooks.clientId, quickBooks.clientSecret),
-      "Content-Type": "application/x-www-form-urlencoded",
-      Accept: "application/json",
-    },
-    body: new URLSearchParams({
-      grant_type: "refresh_token",
-      refresh_token: connection.refreshToken,
-    }),
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    return {
-      success: false,
-      error: "QuickBooks token refresh failed. Please reconnect QuickBooks in Settings.",
-    };
-  }
-
-  const payload = await readResponsePayload(response) as {
-    access_token?: string;
-    refresh_token?: string;
-    expires_in?: number;
-    x_refresh_token_expires_in?: number;
-  };
-
-  if (!payload?.access_token || !payload?.refresh_token || !payload?.expires_in) {
-    return { success: false, error: "QuickBooks token refresh returned an invalid payload." };
-  }
-
-  const updated = await db.quickBooksConnection.update({
-    where: { id: connection.id },
-    data: {
-      accessToken: payload.access_token,
-      refreshToken: payload.refresh_token,
-      accessTokenExpiresAt: new Date(Date.now() + payload.expires_in * 1000),
-      refreshTokenExpiresAt: typeof payload.x_refresh_token_expires_in === "number"
-        ? new Date(Date.now() + payload.x_refresh_token_expires_in * 1000)
-        : connection.refreshTokenExpiresAt,
-    },
-    select: {
-      id: true,
-      realmId: true,
-      accessToken: true,
-      refreshToken: true,
-      accessTokenExpiresAt: true,
-      refreshTokenExpiresAt: true,
-    },
-  });
-
-  return { success: true, connection: updated };
-}
-
-async function getFreshQuickBooksConnection(): Promise<QuickBooksConnectionState> {
-  const quickBooks = getQuickBooksServerConfig();
-  if (!quickBooks.isConfigured) {
-    return { success: true, connection: null, environment: quickBooks.environment };
-  }
-
-  const connection = await db.quickBooksConnection.findFirst({
-    select: {
-      id: true,
-      realmId: true,
-      accessToken: true,
-      refreshToken: true,
-      accessTokenExpiresAt: true,
-      refreshTokenExpiresAt: true,
-    },
-  });
-
-  if (!connection) {
-    // QuickBooks is configured but no workspace connection exists yet.
-    return { success: true, connection: null, environment: quickBooks.environment };
-  }
-
-  if (connection.accessTokenExpiresAt.getTime() - Date.now() <= 60_000) {
-    const refreshed = await refreshQuickBooksConnectionToken(connection);
-    if (!refreshed.success) return refreshed;
-    return { success: true, connection: refreshed.connection, environment: quickBooks.environment };
-  }
-
-  return { success: true, connection, environment: quickBooks.environment };
 }
 
 async function createQuickBooksCustomer(input: {
@@ -386,28 +241,21 @@ async function syncContactRecordToQuickBooks(contact: {
   return { success: true, customerId: createdCustomer.customerId };
 }
 
-/** Logs an activity entry for a contact event. Swallows errors — activity logging
- *  should never break the main action. */
-async function logActivity(
+/** Helper to log a contact activity using the shared logger. */
+function logContactActivity(
   contactId: string,
   userId: string | undefined,
   action: string,
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown>,
 ) {
-  try {
-    await db.activity.create({
-      data: {
-        contactId,
-        userId,
-        entityType: "contact",
-        entityId: contactId,
-        action,
-        metadata: metadata ? JSON.parse(JSON.stringify(metadata)) : null,
-      },
-    });
-  } catch {
-    // Silently ignore — activity logging should never break the primary action
-  }
+  void logActivity({
+    contactId,
+    userId,
+    entityType: "contact",
+    entityId: contactId,
+    action,
+    metadata,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -480,6 +328,10 @@ export async function createContact(input: unknown): Promise<ActionResult<Contac
         state: data.state,
         zip: data.zip,
         website: data.website,
+        linkedinUrl: data.linkedinUrl,
+        facebookUrl: data.facebookUrl,
+        instagramUrl: data.instagramUrl,
+        twitterUrl: data.twitterUrl,
         quickBooksCustomerId,
         source: data.source,
         stage: data.stage,
@@ -493,7 +345,7 @@ export async function createContact(input: unknown): Promise<ActionResult<Contac
       },
     });
 
-    await logActivity(contact.id, auth.user.id, "contact.created", {
+    logContactActivity(contact.id, auth.user.id, "contact.created", {
       stage: data.stage,
       type: data.type,
     });
@@ -555,6 +407,10 @@ export async function updateContact(
         state: data.state,
         zip: data.zip,
         website: data.website,
+        linkedinUrl: data.linkedinUrl,
+        facebookUrl: data.facebookUrl,
+        instagramUrl: data.instagramUrl,
+        twitterUrl: data.twitterUrl,
         source: data.source,
         stage: data.stage,
         type: data.type,
@@ -582,14 +438,14 @@ export async function updateContact(
     });
 
     if (!quickBooksSync.success) {
-      await logActivity(id, auth.user.id, "contact.quickbooks_sync_failed", {
+      logContactActivity(id, auth.user.id, "contact.quickbooks_sync_failed", {
         error: quickBooksSync.error,
       });
     }
 
     // Log stage change if it happened
     if (current.stage !== data.stage) {
-      await logActivity(id, auth.user.id, "stage.changed", {
+      logContactActivity(id, auth.user.id, "stage.changed", {
         from: current.stage,
         to: data.stage,
       });
@@ -647,7 +503,7 @@ export async function syncAllContactsToQuickBooks(): Promise<
     const result = await syncContactRecordToQuickBooks(contact);
     if (!result.success) {
       failed++;
-      if (errors.length < 20) {
+      if (errors.length < QUICKBOOKS_SYNC_MAX_ERRORS) {
         errors.push(`${contact.displayName}: ${result.error}`);
       }
       continue;
@@ -703,9 +559,15 @@ export async function updateContactStage(
       },
     });
 
-    await logActivity(id, auth.user.id, "stage.changed", {
-      from: current.stage,
-      to: newStage,
+    void logActivity({
+      contactId: id,
+      userId: auth.user.id,
+      entityType: "contact",
+      action: "stage.changed",
+      metadata: {
+        from: current.stage,
+        to: newStage,
+      },
     });
 
     revalidatePath(`/contacts/${id}`);
@@ -734,10 +596,11 @@ export async function archiveContact(id: string): Promise<ActionResult<undefined
       data: { status: "ARCHIVED", archivedAt: new Date() },
     });
 
-    await logActivity(id, auth.user.id, "contact.archived");
+    logContactActivity(id, auth.user.id, "contact.archived");
 
     revalidatePath("/contacts");
     revalidatePath("/dashboard");
+    revalidatePath("/pipeline");
 
     return { success: true, data: undefined };
   } catch {
@@ -755,10 +618,12 @@ export async function restoreContact(id: string): Promise<ActionResult<undefined
       data: { status: "ACTIVE", archivedAt: null },
     });
 
-    await logActivity(id, auth.user.id, "contact.restored");
+    logContactActivity(id, auth.user.id, "contact.restored");
 
     revalidatePath("/contacts");
     revalidatePath(`/contacts/${id}`);
+    revalidatePath("/dashboard");
+    revalidatePath("/pipeline");
 
     return { success: true, data: undefined };
   } catch {
@@ -821,7 +686,7 @@ export async function addNote(
       select: { id: true, content: true, createdAt: true },
     });
 
-    await logActivity(contactId, auth.user.id, "note.added", { type: validated.data.type });
+    logContactActivity(contactId, auth.user.id, "note.added", { type: validated.data.type });
 
     // Update lastContactedAt if this was a call log
     if (validated.data.type === "CALL_LOG") {

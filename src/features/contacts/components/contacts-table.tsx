@@ -28,12 +28,13 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { MoreHorizontal, ChevronUp, ChevronDown } from "lucide-react";
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { getInitials, formatDate, formatPhone } from "@/lib/utils";
 import { ContactStageBadge } from "@/features/contacts/components/contact-stage-badge";
-import { CONTACT_SOURCE_OPTIONS } from "@/lib/constants";
+import { CONTACT_SOURCE_OPTIONS, PIPELINE_STAGES, PIPELINE_STAGE_LABELS } from "@/lib/constants";
 import { archiveContact, restoreContact, deleteContact } from "@/server/actions/contacts";
+import { bulkArchiveContacts, bulkUpdateStage } from "@/server/actions/bulk";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,6 +43,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { ContactWithRelations } from "@/types";
 import type { ContactFiltersInput } from "@/lib/validations/contacts";
 
@@ -84,7 +93,7 @@ function ContactRowActions({ contact }: { contact: ContactWithRelations }) {
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7"
+          className="h-9 w-9"
           aria-label={`Actions for ${contact.displayName}`}
           disabled={isPending}
         >
@@ -168,6 +177,30 @@ export function ContactsTable({
 }: ContactsTableProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isPending, startTransition] = useTransition();
+
+  const allSelected = contacts.length > 0 && contacts.every((c) => selectedIds.has(c.id));
+
+  function toggleSelectAll() {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(contacts.map((c) => c.id)));
+    }
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
 
   // Build pagination URLs
   function pageUrl(p: number) {
@@ -203,11 +236,131 @@ export function ContactsTable({
   }
 
   return (
+    <>
+    {selectedIds.size > 0 && (
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/50 px-4 py-2 text-sm mb-3">
+        <span className="font-medium">{selectedIds.size} selected</span>
+        <div className="h-4 w-px bg-border" />
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            startTransition(async () => {
+              const result = await bulkArchiveContacts(Array.from(selectedIds));
+              if (result.success) {
+                toast.success(`Archived ${result.data.count} contact(s).`);
+                setSelectedIds(new Set());
+              } else {
+                toast.error(result.error);
+              }
+            });
+          }}
+          disabled={isPending}
+        >
+          Archive
+        </Button>
+        <Select
+          onValueChange={(stage) => {
+            startTransition(async () => {
+              const result = await bulkUpdateStage(Array.from(selectedIds), stage as any);
+              if (result.success) {
+                toast.success(`Updated ${result.data.count} contact(s) to ${PIPELINE_STAGE_LABELS[stage as keyof typeof PIPELINE_STAGE_LABELS]}.`);
+                setSelectedIds(new Set());
+              } else {
+                toast.error(result.error);
+              }
+            });
+          }}
+          disabled={isPending}
+        >
+          <SelectTrigger className="h-8 w-40 text-xs">
+            <SelectValue placeholder="Change stage..." />
+          </SelectTrigger>
+          <SelectContent>
+            {PIPELINE_STAGES.map((s) => (
+              <SelectItem key={s} value={s} className="text-xs">
+                {PIPELINE_STAGE_LABELS[s]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
+          Clear
+        </Button>
+      </div>
+    )}
     <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
-      <div className="overflow-x-auto">
+      {/* Mobile card layout */}
+      <div className="md:hidden divide-y divide-border">
+        {contacts.map((contact) => (
+          <div key={contact.id} className="relative">
+            <Link
+              href={`/contacts/${contact.id}`}
+              className="block px-4 py-3 hover:bg-accent/30 transition-colors"
+            >
+              <div className="flex items-start gap-3">
+                <div
+                  className="flex-shrink-0 pt-1"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    toggleSelect(contact.id);
+                  }}
+                >
+                  <Checkbox
+                    checked={selectedIds.has(contact.id)}
+                    aria-label={`Select ${contact.displayName}`}
+                  />
+                </div>
+                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-sm font-semibold">
+                  {getInitials(contact.displayName)}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-foreground leading-tight">
+                    {contact.displayName}
+                  </p>
+                  {contact.businessName && (
+                    <p className="text-xs text-muted-foreground leading-tight mt-0.5">
+                      {contact.businessName}
+                    </p>
+                  )}
+                  <div className="flex items-center gap-2 mt-2">
+                    <ContactStageBadge stage={contact.stage} />
+                  </div>
+                  {contact.phone && (
+                    <a
+                      href={`tel:${contact.phone}`}
+                      className="inline-block text-xs text-muted-foreground hover:text-primary transition-colors mt-1.5"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {formatPhone(contact.phone)}
+                    </a>
+                  )}
+                </div>
+                <div
+                  className="flex-shrink-0"
+                  onClick={(e) => e.preventDefault()}
+                >
+                  <ContactRowActions contact={contact} />
+                </div>
+              </div>
+            </Link>
+          </div>
+        ))}
+      </div>
+
+      {/* Desktop table layout */}
+      <div className="hidden md:block overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-muted/50">
+              <th className="px-4 py-3 w-10">
+                <Checkbox
+                  checked={allSelected}
+                  onCheckedChange={toggleSelectAll}
+                  aria-label="Select all contacts"
+                />
+              </th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">
                 <SortableHeader
                   label="Name"
@@ -250,6 +403,14 @@ export function ContactsTable({
           <tbody className="divide-y divide-border">
             {contacts.map((contact) => (
               <tr key={contact.id} className="hover:bg-accent/30 transition-colors group">
+                {/* Checkbox */}
+                <td className="px-4 py-3">
+                  <Checkbox
+                    checked={selectedIds.has(contact.id)}
+                    onCheckedChange={() => toggleSelect(contact.id)}
+                    aria-label={`Select ${contact.displayName}`}
+                  />
+                </td>
                 {/* Name */}
                 <td className="px-4 py-3">
                   <Link href={`/contacts/${contact.id}`} className="hover:underline block">
@@ -336,7 +497,7 @@ export function ContactsTable({
       </div>
 
       {/* Pagination */}
-      <div className="flex items-center justify-between border-t border-border px-4 py-3 text-xs text-muted-foreground">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-t border-border px-4 py-3 text-xs text-muted-foreground">
         <span>
           {total === 0 ? "No results" : `Showing ${from}–${to} of ${total}`}
         </span>
@@ -365,5 +526,6 @@ export function ContactsTable({
         </div>
       </div>
     </div>
+    </>
   );
 }

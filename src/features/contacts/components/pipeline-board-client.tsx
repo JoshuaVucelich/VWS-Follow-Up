@@ -13,7 +13,14 @@
 
 "use client";
 
-import { useState, useMemo, useRef, useTransition, useEffect } from "react";
+import {
+  useState,
+  useMemo,
+  useRef,
+  useTransition,
+  useEffect,
+  useCallback,
+} from "react";
 import {
   DragDropContext,
   Droppable,
@@ -143,6 +150,7 @@ export function PipelineBoardClient({
   const [boardContentWidth, setBoardContentWidth] = useState(0);
   const [boardViewportWidth, setBoardViewportWidth] = useState(0);
   const [boardScrollLeft, setBoardScrollLeft] = useState(0);
+  const [mobileActiveColumn, setMobileActiveColumn] = useState(0);
 
   // Keep a stable reference to the last confirmed server state for rollback
   const confirmedContacts = useRef<PipelineContact[]>(initialContacts);
@@ -196,6 +204,45 @@ export function PipelineBoardClient({
     boardEl.scrollTo({ left: target, behavior: "smooth" });
   }
 
+  function scrollToColumn(index: number) {
+    const boardEl = boardScrollbarRef.current;
+    if (!boardEl) return;
+
+    const columnEls = boardEl.querySelectorAll<HTMLElement>(
+      "[data-pipeline-column]",
+    );
+    const target = columnEls[index];
+    if (!target) return;
+
+    boardEl.scrollTo({ left: target.offsetLeft, behavior: "smooth" });
+    setMobileActiveColumn(index);
+  }
+
+  const handleBoardScrollForMobile = useCallback(() => {
+    const boardEl = boardScrollbarRef.current;
+    if (!boardEl) return;
+
+    const columnEls = boardEl.querySelectorAll<HTMLElement>(
+      "[data-pipeline-column]",
+    );
+    if (columnEls.length === 0) return;
+
+    const scrollCenter = boardEl.scrollLeft + boardEl.clientWidth / 2;
+    let closestIndex = 0;
+    let closestDistance = Infinity;
+
+    columnEls.forEach((el, i) => {
+      const colCenter = el.offsetLeft + el.offsetWidth / 2;
+      const dist = Math.abs(scrollCenter - colCenter);
+      if (dist < closestDistance) {
+        closestDistance = dist;
+        closestIndex = i;
+      }
+    });
+
+    setMobileActiveColumn(closestIndex);
+  }, []);
+
   useEffect(() => {
     return () => {
       if (longPressTimerRef.current) {
@@ -214,6 +261,7 @@ export function PipelineBoardClient({
     const boardEl = boardScrollbarRef.current;
     const handleBoardScroll = () => {
       setBoardScrollLeft(boardEl?.scrollLeft ?? 0);
+      handleBoardScrollForMobile();
     };
     boardEl?.addEventListener("scroll", handleBoardScroll, { passive: true });
 
@@ -337,6 +385,58 @@ export function PipelineBoardClient({
           />
         </div>
 
+        {/* Mobile-only horizontal stage pill selector */}
+        <div className="flex overflow-x-auto gap-2 px-2 py-1.5 md:hidden scrollbar-none">
+          {PIPELINE_COLUMNS.map((column, index) => (
+            <button
+              key={column.id}
+              type="button"
+              onClick={() => scrollToColumn(index)}
+              className={`flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                mobileActiveColumn === index
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "bg-muted text-muted-foreground"
+              }`}
+            >
+              {column.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Mobile-only arrow buttons */}
+        <div className="flex items-center justify-center gap-4 py-1 md:hidden">
+          <button
+            type="button"
+            onClick={() => {
+              const prev = Math.max(0, mobileActiveColumn - 1);
+              scrollToColumn(prev);
+            }}
+            disabled={mobileActiveColumn === 0}
+            className="flex h-12 w-12 items-center justify-center rounded-full border border-border bg-background shadow-sm disabled:opacity-40"
+            aria-label="Previous column"
+          >
+            <ChevronLeft className="h-6 w-6" />
+          </button>
+          <span className="text-sm font-medium text-muted-foreground">
+            {PIPELINE_COLUMNS[mobileActiveColumn]?.label}
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              const next = Math.min(
+                PIPELINE_COLUMNS.length - 1,
+                mobileActiveColumn + 1,
+              );
+              scrollToColumn(next);
+            }}
+            disabled={mobileActiveColumn === PIPELINE_COLUMNS.length - 1}
+            className="flex h-12 w-12 items-center justify-center rounded-full border border-border bg-background shadow-sm disabled:opacity-40"
+            aria-label="Next column"
+          >
+            <ChevronRight className="h-6 w-6" />
+          </button>
+        </div>
+
         <div className="relative h-full">
           {/* Side arrows (desktop): jump one column at a time */}
           <button
@@ -361,7 +461,7 @@ export function PipelineBoardClient({
           {/* Horizontal scroll container for columns */}
           <div
             ref={boardScrollbarRef}
-            className="h-full overflow-x-auto pb-4 scrollbar-none"
+            className="h-full overflow-x-auto pb-4 md:scrollbar-none"
           >
             <div ref={boardContentRef} className="flex h-full min-w-max gap-3">
               {PIPELINE_COLUMNS.map((column) => {
@@ -371,7 +471,8 @@ export function PipelineBoardClient({
                 return (
                   <div
                     key={column.id}
-                    className="flex w-[280px] flex-shrink-0 flex-col rounded-xl border border-border bg-muted/20"
+                    data-pipeline-column
+                    className="flex w-[85vw] max-w-[320px] md:w-[280px] md:max-w-none flex-shrink-0 flex-col rounded-xl border border-border bg-muted/20"
                   >
                     {/* Column header */}
                     <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
@@ -522,7 +623,7 @@ export function PipelineBoardClient({
                                                     ? "secondary"
                                                     : "ghost"
                                                 }
-                                                className="h-6 px-2 text-[10px] font-medium"
+                                                className="h-6 px-2 text-xs font-medium"
                                                 disabled={
                                                   isCurrent ||
                                                   isPending ||

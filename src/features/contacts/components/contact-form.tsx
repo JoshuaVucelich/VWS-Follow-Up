@@ -62,6 +62,10 @@ interface ContactFormContact {
   state?: string | null;
   zip?: string | null;
   website?: string | null;
+  linkedinUrl?: string | null;
+  facebookUrl?: string | null;
+  instagramUrl?: string | null;
+  twitterUrl?: string | null;
   source: ContactSource;
   stage: ContactStage;
   type: ContactType;
@@ -109,6 +113,10 @@ export function ContactForm({ contact, users, redirectTo = "/contacts" }: Contac
       state: contact?.state ?? "",
       zip: contact?.zip ?? "",
       website: contact?.website ?? "",
+      linkedinUrl: contact?.linkedinUrl ?? "",
+      facebookUrl: contact?.facebookUrl ?? "",
+      instagramUrl: contact?.instagramUrl ?? "",
+      twitterUrl: contact?.twitterUrl ?? "",
       source: contact?.source ?? "OTHER",
       stage: contact?.stage ?? "NEW_LEAD",
       type: contact?.type ?? "LEAD",
@@ -453,9 +461,40 @@ export function ContactForm({ contact, users, redirectTo = "/contacts" }: Contac
       </section>
 
       {/* ------------------------------------------------------------------ */}
+      {/* Section 6: Social Media                                              */}
+      {/* ------------------------------------------------------------------ */}
+      <section className="space-y-4">
+        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+          Social Media
+        </h2>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="linkedinUrl">LinkedIn</Label>
+            <Input id="linkedinUrl" type="url" placeholder="linkedin.com/in/username" {...register("linkedinUrl")} />
+            {errors.linkedinUrl && <p className="text-xs text-destructive">{errors.linkedinUrl.message}</p>}
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="facebookUrl">Facebook</Label>
+            <Input id="facebookUrl" type="url" placeholder="facebook.com/username" {...register("facebookUrl")} />
+            {errors.facebookUrl && <p className="text-xs text-destructive">{errors.facebookUrl.message}</p>}
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="instagramUrl">Instagram</Label>
+            <Input id="instagramUrl" type="url" placeholder="instagram.com/username" {...register("instagramUrl")} />
+            {errors.instagramUrl && <p className="text-xs text-destructive">{errors.instagramUrl.message}</p>}
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="twitterUrl">X (Twitter)</Label>
+            <Input id="twitterUrl" type="url" placeholder="x.com/username" {...register("twitterUrl")} />
+            {errors.twitterUrl && <p className="text-xs text-destructive">{errors.twitterUrl.message}</p>}
+          </div>
+        </div>
+      </section>
+
+      {/* ------------------------------------------------------------------ */}
       {/* Form Actions                                                         */}
       {/* ------------------------------------------------------------------ */}
-      <div className="flex items-center justify-end gap-3 pt-2 border-t border-border">
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end pt-2 border-t border-border">
         <Button
           type="button"
           variant="outline"

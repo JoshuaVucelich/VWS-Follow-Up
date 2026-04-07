@@ -150,6 +150,23 @@ export const APPOINTMENT_TYPE_OPTIONS: SelectOption<AppointmentType>[] = [
 // PAGINATION
 // =============================================================================
 
+// =============================================================================
+// LIMITS
+// =============================================================================
+
+/** Maximum contacts returned for the pipeline board view. */
+export const PIPELINE_MAX_CONTACTS = 500;
+
+/** Maximum contacts returned for picker / dropdown usage. */
+export const CONTACTS_PICKER_LIMIT = 200;
+
+/** Maximum sync errors tracked before truncating during a bulk QuickBooks sync. */
+export const QUICKBOOKS_SYNC_MAX_ERRORS = 20;
+
+// =============================================================================
+// PAGINATION
+// =============================================================================
+
 /** Default number of items per page in all list views */
 export const DEFAULT_PAGE_SIZE = 25;
 

@@ -29,6 +29,10 @@ import {
   Phone,
   Mail,
   Globe,
+  Linkedin,
+  Facebook,
+  Instagram,
+  ExternalLink,
   MapPin,
   Calendar,
   User,
@@ -56,6 +60,10 @@ interface OverviewContact {
   altPhone: string | null;
   email: string | null;
   website: string | null;
+  linkedinUrl: string | null;
+  facebookUrl: string | null;
+  instagramUrl: string | null;
+  twitterUrl: string | null;
   addressLine1: string | null;
   addressLine2: string | null;
   city: string | null;
@@ -182,6 +190,41 @@ export function ContactOverview({ contact, allTags }: ContactOverviewProps) {
           )}
         </CardContent>
       </Card>
+
+      {/* Social Media card */}
+      {(contact.linkedinUrl || contact.facebookUrl || contact.instagramUrl || contact.twitterUrl) && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Social Media</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0 space-y-2">
+            {contact.linkedinUrl && (
+              <a href={contact.linkedinUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-primary hover:underline">
+                <Linkedin className="h-4 w-4" /> LinkedIn
+                <ExternalLink className="h-3 w-3 ml-auto text-muted-foreground" />
+              </a>
+            )}
+            {contact.facebookUrl && (
+              <a href={contact.facebookUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-primary hover:underline">
+                <Facebook className="h-4 w-4" /> Facebook
+                <ExternalLink className="h-3 w-3 ml-auto text-muted-foreground" />
+              </a>
+            )}
+            {contact.instagramUrl && (
+              <a href={contact.instagramUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-primary hover:underline">
+                <Instagram className="h-4 w-4" /> Instagram
+                <ExternalLink className="h-3 w-3 ml-auto text-muted-foreground" />
+              </a>
+            )}
+            {contact.twitterUrl && (
+              <a href={contact.twitterUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm text-primary hover:underline">
+                <Globe className="h-4 w-4" /> X (Twitter)
+                <ExternalLink className="h-3 w-3 ml-auto text-muted-foreground" />
+              </a>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Lead details card */}
       <Card>

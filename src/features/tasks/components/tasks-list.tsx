@@ -116,7 +116,7 @@ function TaskRowActions({
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7"
+          className="h-9 w-9"
           disabled={isPending}
           aria-label="Task actions"
         >
@@ -215,7 +215,83 @@ export function TasksList({
 
   return (
     <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
-      <div className="overflow-x-auto">
+      {/* Mobile card layout */}
+      <div className="md:hidden divide-y divide-border">
+        {tasks.map((task) => {
+          const isDone = task.status === "COMPLETED";
+          const isCanceled = task.status === "CANCELED";
+          const isOverdue =
+            task.dueAt != null &&
+            task.dueAt < new Date() &&
+            !isDone &&
+            !isCanceled;
+          const isMuted = isDone || isCanceled;
+
+          return (
+            <div
+              key={task.id}
+              className={cn(
+                "px-4 py-3",
+                isOverdue && "bg-destructive/5",
+                isMuted && "opacity-60"
+              )}
+            >
+              <div className="flex items-start gap-3">
+                <div className="pt-0.5 flex-shrink-0">
+                  <TaskCompleteCheckbox task={task} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p
+                    className={cn(
+                      "text-sm font-medium leading-tight",
+                      isDone && "line-through text-muted-foreground",
+                      isOverdue && "text-destructive"
+                    )}
+                  >
+                    {task.title}
+                  </p>
+                  {task.contact && (
+                    <Link
+                      href={`/contacts/${task.contact.id}`}
+                      className="text-xs text-muted-foreground hover:text-primary transition-colors"
+                    >
+                      {task.contact.displayName}
+                    </Link>
+                  )}
+                  <div className="flex items-center gap-2 mt-2">
+                    <span
+                      className={cn(
+                        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold",
+                        TASK_PRIORITY_COLORS[task.priority]
+                      )}
+                    >
+                      {PRIORITY_LABELS[task.priority]}
+                    </span>
+                    {task.dueAt && (
+                      <span
+                        className={cn(
+                          "text-xs",
+                          isOverdue
+                            ? "text-destructive font-medium"
+                            : "text-muted-foreground"
+                        )}
+                      >
+                        {formatDate(task.dueAt)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex-shrink-0">
+                  <TaskRowActions task={task} userRole={userRole} />
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Desktop table layout */}
+      <div className="hidden md:block overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-muted/50">
@@ -347,7 +423,7 @@ export function TasksList({
       </div>
 
       {/* Pagination */}
-      <div className="flex items-center justify-between border-t border-border px-4 py-3 text-xs text-muted-foreground">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-t border-border px-4 py-3 text-xs text-muted-foreground">
         <span>
           {total === 0 ? "No results" : `Showing ${from}–${to} of ${total}`}
         </span>

@@ -18,6 +18,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { requireAuthForAction } from "@/lib/session";
 import { taskFormSchema, updateTaskStatusSchema } from "@/lib/validations/tasks";
+import { logActivity } from "@/server/lib/activity-logger";
 import type { ActionResult } from "@/types";
 import type { Task } from "@prisma/client";
 
@@ -25,27 +26,13 @@ import type { Task } from "@prisma/client";
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Logs an activity entry on a contact when a task event occurs. */
-async function logTaskActivity(
+function logTaskActivity(
   contactId: string | null | undefined,
   userId: string | undefined,
   action: string,
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown>,
 ) {
-  if (!contactId) return;
-  try {
-    await db.activity.create({
-      data: {
-        contactId,
-        userId,
-        entityType: "task",
-        action,
-        metadata: metadata ? JSON.parse(JSON.stringify(metadata)) : null,
-      },
-    });
-  } catch {
-    // Silently ignore — activity logging should never break the primary action
-  }
+  void logActivity({ contactId, userId, entityType: "task", action, metadata });
 }
 
 // ---------------------------------------------------------------------------
@@ -80,7 +67,7 @@ export async function createTask(input: unknown): Promise<ActionResult<Task>> {
       },
     });
 
-    await logTaskActivity(data.contactId, auth.user.id, "task.created", {
+    logTaskActivity(data.contactId, auth.user.id, "task.created", {
       taskTitle: data.title,
       priority: data.priority,
     });
@@ -157,7 +144,7 @@ export async function completeTask(id: string): Promise<ActionResult<undefined>>
       select: { contactId: true, title: true },
     });
 
-    await logTaskActivity(task.contactId, auth.user.id, "task.completed", {
+    logTaskActivity(task.contactId, auth.user.id, "task.completed", {
       taskTitle: task.title,
     });
 

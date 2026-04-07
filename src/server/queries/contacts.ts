@@ -11,6 +11,7 @@
  */
 
 import { db } from "@/lib/db";
+import { PIPELINE_MAX_CONTACTS, CONTACTS_PICKER_LIMIT } from "@/lib/constants";
 import type { ContactFiltersInput } from "@/lib/validations/contacts";
 import type { PipelineFiltersInput } from "@/lib/validations/pipeline";
 import type { ContactWithRelations, PaginatedResult } from "@/types";
@@ -253,7 +254,7 @@ export async function getPipelineContacts(
   return db.contact.findMany({
     where,
     orderBy: { displayName: "asc" },
-    take: 500,
+    take: PIPELINE_MAX_CONTACTS,
     select: {
       id: true,
       displayName: true,
@@ -312,7 +313,7 @@ export async function getOverdueFollowUps(limit = 10) {
  * Returns a minimal contact list for picker / dropdown usage.
  * Used by the task creation dialog and other assignment dropdowns.
  */
-export async function getContactsForPicker(limit = 200) {
+export async function getContactsForPicker(limit = CONTACTS_PICKER_LIMIT) {
   return db.contact.findMany({
     where: { status: { not: "ARCHIVED" } },
     orderBy: { displayName: "asc" },

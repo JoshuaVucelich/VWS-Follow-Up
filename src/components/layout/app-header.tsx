@@ -12,10 +12,12 @@
  * the mobile drawer interactivity.
  */
 
-import { Search, Bell } from "lucide-react";
+import { Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MobileNav } from "./mobile-nav";
 import { ThemeToggle } from "./theme-toggle";
+import { GlobalSearch } from "@/components/shared/global-search";
+import { SearchTrigger } from "@/components/shared/search-trigger";
 
 interface AppHeaderProps {
   user: {
@@ -32,20 +34,8 @@ export function AppHeader({ user }: AppHeaderProps) {
       {/* Mobile nav drawer — shown only on small screens */}
       <MobileNav user={user} />
 
-      {/* Global search
-          TODO: Implement a command-palette style search (Cmd+K)
-          that searches contacts, tasks, and quotes simultaneously. */}
-      <div className="flex flex-1 items-center gap-2">
-        <div className="relative w-full max-w-sm">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <input
-            type="search"
-            placeholder="Search contacts, tasks..."
-            className="h-9 w-full rounded-md border border-input bg-background pl-8 pr-3 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 disabled:cursor-not-allowed"
-            aria-label="Global search"
-          />
-        </div>
-      </div>
+      {/* Global search — click opens command palette (Cmd+K) */}
+      <SearchTrigger />
 
       {/* Right side actions */}
       <div className="flex items-center gap-2">
@@ -56,7 +46,7 @@ export function AppHeader({ user }: AppHeaderProps) {
           variant="ghost"
           size="icon"
           aria-label="Notifications"
-          className="relative"
+          className="relative hidden sm:flex"
         >
           <Bell className="h-5 w-5" />
           {/* Badge for unread count — shown when there are overdue tasks */}
@@ -76,6 +66,8 @@ export function AppHeader({ user }: AppHeaderProps) {
           </div>
         </div>
       </div>
+
+      <GlobalSearch />
     </header>
   );
 }

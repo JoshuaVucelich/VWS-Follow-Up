@@ -17,13 +17,15 @@
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { requireAuthForAction } from "@/lib/session";
-import {
-  QUICKBOOKS_TOKEN_URL,
-  getQuickBooksApiBaseUrl,
-  getQuickBooksBasicAuthHeader,
-  getQuickBooksServerConfig,
-} from "@/lib/quickbooks";
+import { QUICKBOOKS_SYNC_MAX_ERRORS } from "@/lib/constants";
 import { quoteFormSchema, updateQuoteStatusSchema } from "@/lib/validations/quotes";
+import {
+  parseQuickBooksError,
+  readResponsePayload,
+  buildQuickBooksApiUrl,
+  getFreshQuickBooksConnection,
+} from "@/server/lib/quickbooks-api";
+import { logActivity } from "@/server/lib/activity-logger";
 import type { ActionResult } from "@/types";
 import type { Quote } from "@prisma/client";
 
@@ -31,183 +33,25 @@ import type { Quote } from "@prisma/client";
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function logQuoteActivity(
+function logQuoteActivity(
   contactId: string | null | undefined,
   userId: string | undefined,
   action: string,
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown>,
 ) {
-  if (!contactId) return;
-  try {
-    await db.activity.create({
-      data: {
-        contactId,
-        userId,
-        entityType: "quote",
-        action,
-        metadata: metadata ? JSON.parse(JSON.stringify(metadata)) : null,
-      },
-    });
-  } catch {
-    // Fire-and-forget — activity logging never blocks the primary action
-  }
+  void logActivity({
+    contactId,
+    userId,
+    entityType: "quote",
+    action,
+    metadata,
+  });
 }
 
-function revalidateQuotePaths(contactId?: string) {
+function revalidateQuotePaths(contactId?: string | null) {
   revalidatePath("/quotes");
   revalidatePath("/dashboard");
   if (contactId) revalidatePath(`/contacts/${contactId}`);
-}
-
-type QuickBooksConnectionRecord = {
-  id: string;
-  realmId: string;
-  accessToken: string;
-  refreshToken: string;
-  accessTokenExpiresAt: Date;
-  refreshTokenExpiresAt: Date | null;
-};
-
-function parseQuickBooksError(payload: unknown): string | null {
-  if (!payload || typeof payload !== "object") return null;
-  const fault = (payload as { Fault?: { Error?: Array<{ Message?: string; Detail?: string }> } }).Fault;
-  const errors = fault?.Error;
-  if (!errors || errors.length === 0) return null;
-  const parts = errors
-    .map((entry) => entry.Detail || entry.Message)
-    .filter((value): value is string => Boolean(value?.trim()));
-  return parts.length > 0 ? parts.join(" | ") : null;
-}
-
-async function readResponsePayload(response: Response): Promise<unknown> {
-  const text = await response.text();
-  if (!text) return null;
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    return text;
-  }
-}
-
-function buildQuickBooksApiUrl(
-  input: {
-    realmId: string;
-    environment: "sandbox" | "production";
-    path: string;
-    queryParams?: Record<string, string>;
-  },
-): string {
-  const { realmId, environment, path, queryParams } = input;
-  const url = new URL(`/v3/company/${realmId}${path}`, getQuickBooksApiBaseUrl(environment));
-  url.searchParams.set("minorversion", "75");
-  if (queryParams) {
-    for (const [key, value] of Object.entries(queryParams)) {
-      url.searchParams.set(key, value);
-    }
-  }
-  return url.toString();
-}
-
-async function refreshQuickBooksConnectionToken(
-  connection: QuickBooksConnectionRecord,
-): Promise<{ success: true; connection: QuickBooksConnectionRecord } | { success: false; error: string }> {
-  const quickBooks = getQuickBooksServerConfig();
-  if (!quickBooks.isConfigured) {
-    return { success: false, error: "QuickBooks is not configured on this server." };
-  }
-
-  const response = await fetch(QUICKBOOKS_TOKEN_URL, {
-    method: "POST",
-    headers: {
-      Authorization: getQuickBooksBasicAuthHeader(quickBooks.clientId, quickBooks.clientSecret),
-      "Content-Type": "application/x-www-form-urlencoded",
-      Accept: "application/json",
-    },
-    body: new URLSearchParams({
-      grant_type: "refresh_token",
-      refresh_token: connection.refreshToken,
-    }),
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    return { success: false, error: "QuickBooks token refresh failed. Please reconnect your QuickBooks account." };
-  }
-
-  const payload = await readResponsePayload(response) as {
-    access_token?: string;
-    refresh_token?: string;
-    expires_in?: number;
-    x_refresh_token_expires_in?: number;
-  };
-
-  if (!payload?.access_token || !payload?.refresh_token || !payload?.expires_in) {
-    return { success: false, error: "QuickBooks token refresh returned an invalid payload." };
-  }
-
-  const updated = await db.quickBooksConnection.update({
-    where: { id: connection.id },
-    data: {
-      accessToken: payload.access_token,
-      refreshToken: payload.refresh_token,
-      accessTokenExpiresAt: new Date(Date.now() + payload.expires_in * 1000),
-      refreshTokenExpiresAt: typeof payload.x_refresh_token_expires_in === "number"
-        ? new Date(Date.now() + payload.x_refresh_token_expires_in * 1000)
-        : connection.refreshTokenExpiresAt,
-    },
-    select: {
-      id: true,
-      realmId: true,
-      accessToken: true,
-      refreshToken: true,
-      accessTokenExpiresAt: true,
-      refreshTokenExpiresAt: true,
-    },
-  });
-
-  return { success: true, connection: updated };
-}
-
-async function getFreshQuickBooksConnection(
-  requireConnection = true,
-): Promise<
-  { success: true; connection: QuickBooksConnectionRecord | null; environment: "sandbox" | "production" }
-  | { success: false; error: string }
-> {
-  const quickBooks = getQuickBooksServerConfig();
-  if (!quickBooks.isConfigured) {
-    if (!requireConnection) {
-      return { success: true, connection: null, environment: quickBooks.environment };
-    }
-    return { success: false, error: "QuickBooks is not configured on this server." };
-  }
-
-  const connection = await db.quickBooksConnection.findFirst({
-    select: {
-      id: true,
-      realmId: true,
-      accessToken: true,
-      refreshToken: true,
-      accessTokenExpiresAt: true,
-      refreshTokenExpiresAt: true,
-    },
-  });
-
-  if (!connection) {
-    if (!requireConnection) {
-      return { success: true, connection: null, environment: quickBooks.environment };
-    }
-    return { success: false, error: "No QuickBooks account is connected. Connect QuickBooks in Settings first." };
-  }
-
-  // Refresh if expired (or about to expire in the next minute).
-  if (connection.accessTokenExpiresAt.getTime() - Date.now() <= 60_000) {
-    const refreshed = await refreshQuickBooksConnectionToken(connection);
-    if (!refreshed.success) return refreshed;
-    return { success: true, connection: refreshed.connection, environment: quickBooks.environment };
-  }
-
-  return { success: true, connection, environment: quickBooks.environment };
 }
 
 // ---------------------------------------------------------------------------
@@ -680,7 +524,7 @@ export async function syncAllQuotesToQuickBooks(): Promise<
     const result = await syncQuoteToQuickBooksInternal(quote.id, auth.user.id, true);
     if (!result.success) {
       failed++;
-      if (errors.length < 20) {
+      if (errors.length < QUICKBOOKS_SYNC_MAX_ERRORS) {
         errors.push(`Quote ${quote.id}: ${result.error}`);
       }
       continue;

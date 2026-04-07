@@ -18,17 +18,29 @@
 "use client";
 
 import Link from "next/link";
-import { Plus, UserPlus, CheckSquare } from "lucide-react";
+import { UserPlus, CheckSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { CreateTaskDialog } from "@/features/tasks/components/create-task-dialog";
 
-export function QuickActions() {
+interface QuickActionsProps {
+  users: { id: string; name: string | null; email: string | null }[];
+  contacts: { id: string; displayName: string }[];
+}
+
+export function QuickActions({ users, contacts }: QuickActionsProps) {
   return (
     <div className="flex items-center gap-2">
-      {/* Add Task — opens modal (TODO) */}
-      <Button variant="outline" size="sm">
-        <CheckSquare className="mr-1.5 h-4 w-4" />
-        Add Task
-      </Button>
+      {/* Add Task — opens CreateTaskDialog */}
+      <CreateTaskDialog
+        users={users}
+        contacts={contacts}
+        trigger={
+          <Button variant="outline" size="sm">
+            <CheckSquare className="mr-1.5 h-4 w-4" />
+            Add Task
+          </Button>
+        }
+      />
 
       {/* Add Lead — navigates to new contact form */}
       <Button size="sm" asChild>

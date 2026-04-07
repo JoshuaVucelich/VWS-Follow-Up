@@ -20,6 +20,8 @@ import { UserProfileForm } from "@/features/settings/components/user-profile-for
 import { TeamMembersSection } from "@/features/settings/components/team-members-section";
 import { ImportExportSection } from "@/features/settings/components/import-export-section";
 import { QuickBooksIntegrationSection } from "@/features/settings/components/quickbooks-integration-section";
+import { SocialMediaSettings } from "@/features/settings/components/social-media-settings";
+import { getSocialMediaSettings } from "@/server/actions/social-media";
 import { Separator } from "@/components/ui/separator";
 
 export const metadata: Metadata = {
@@ -40,6 +42,7 @@ function firstValue(value: string | string[] | undefined): string | undefined {
 export default async function SettingsPage({ searchParams }: SettingsPageProps) {
   const quickbooksStatus = firstValue(searchParams?.quickbooks);
   const quickbooksError = firstValue(searchParams?.quickbooks_error);
+  const socialMedia = await getSocialMediaSettings();
 
   return (
     <div className="space-y-8 max-w-3xl">
@@ -84,6 +87,14 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           oauthStatus={quickbooksStatus}
           oauthError={quickbooksError}
         />
+      </section>
+
+      <Separator />
+
+      {/* Social Media */}
+      <section>
+        <h2 className="text-lg font-medium mb-4">Social Media</h2>
+        <SocialMediaSettings initialValues={socialMedia} />
       </section>
 
       <Separator />
